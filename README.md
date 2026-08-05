@@ -1,5 +1,7 @@
 # Hackday
 
+> 调研笔记与选题建议：[docs/aholo-调研与选题.md](docs/aholo-调研与选题.md)
+
 ## 赛道
 ###  Aholo专题赛道 (Aholo Creator Track)
 你需要调研：Aholo是什么，他的api能提供哪些机会？
