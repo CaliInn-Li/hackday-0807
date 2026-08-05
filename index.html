@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aholo Spatial Starter · 3DGS Playground</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="scene"></canvas>
+
+      <header class="hud hud--top">
+        <div class="hud__brand">
+          <span class="hud__dot"></span>
+          Aholo Spatial Starter
+        </div>
+        <p class="hud__subtitle">
+          3D Gaussian Splatting playground · drag to orbit · scroll to zoom
+        </p>
+      </header>
+
+      <div class="hud hud--bottom">
+        <div class="hud__stats">
+          <span>splats: <strong id="stat-count">0</strong></span>
+          <span>fps: <strong id="stat-fps">0</strong></span>
+        </div>
+        <div class="hud__controls">
+          <button id="btn-regen" type="button">Regenerate scene</button>
+          <button id="btn-shape" type="button">Next shape</button>
+          <button id="btn-rotate" type="button" aria-pressed="true">
+            Auto-rotate: on
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
