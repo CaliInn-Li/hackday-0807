@@ -1,0 +1,17 @@
+{
+  "name": "Aholo Spatial Starter",
+  "install": "npm ci",
+  "terminals": [
+    {
+      "name": "dev",
+      "command": "npm run dev",
+      "description": "Vite dev server for the 3DGS spatial starter app (http://localhost:5173)."
+    }
+  ],
+  "ports": [
+    {
+      "name": "vite dev server",
+      "port": 5173
+    }
+  ]
+}
