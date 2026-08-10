@@ -1,0 +1,15 @@
+{
+  "worldId": "3FO4K4WYFVXB",
+  "name": "潮汐档案馆：失落的星图",
+  "status": "SUCCEEDED",
+  "progress": 1,
+  "source": "Aholo Spatial Gen",
+  "upAxis": "Z",
+  "splats": {
+    "plyPath": "https://holo-cos.aholo3d.cn/spatial-gen-3dgs/3FO4FAD1UUI7/aholo/output/72b704dbdc1c4daf85b366bc282a9af8-121855-ef01_MaaSReportFile-19b8820440515d4a5be1096b4d0e206e.ply",
+    "spzPath": "https://holo-cos.aholo3d.cn/spatial-gen-3dgs/3FO4FAD1UUI7/aholo/output/72b704dbdc1c4daf85b366bc282a9af8-121855-ef01_MaaSReportFile-c7cd4232c1cb3c7253e140ca12b4e9d7.spz",
+    "lodMetaPath": "https://holo-cos.aholo3d.cn/splat-transform/3FO4FAD1UUI7/lod/1786076985/lod-meta.json"
+  },
+  "updatedAt": "2026-08-07T04:30:19.279Z",
+  "panoFile": "/generated/aholo-pano.jpg"
+}
