@@ -59,4 +59,4 @@ bash run_remote_pipeline.sh \
 - 最终动画：`runs/action_character/motion/character_action_animated.glb`。
 - 日志和中间产物全部保存在对应的 `runs/<名称>/` 中。
 
-完整原理与故障处理见 [完整闭环运行手册](docs/原始Lux3D-GLB到动画GLB-完整闭环运行手册.md)，实测产物说明见 [pipeline/README.md](pipeline/README.md)。
+完整原理与故障处理见 [完整闭环运行手册](docs/原始Lux3D-GLB到动画GLB-完整闭环运行手册.md)，五阶段独立运行与产物说明见 [pipeline/五阶段独立运行与产物说明.md](pipeline/五阶段独立运行与产物说明.md)。

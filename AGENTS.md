@@ -12,6 +12,30 @@
 - https://zju3dv.github.io/gvhmr/
 - https://github.com/zju3dv/GVHMR
 
+## 项目完整链路（五阶段）
+
+```mermaid
+flowchart LR
+    subgraph 角色分支
+        A["静态 GLB<br/>外观 + PBR 材质"] --> B["① SkinTokens 自动绑骨/蒙皮<br/>22骨 + 每顶点权重<br/>--use-transfer 保留原网格尺寸"]
+        B --> C["② Blender 清理 + 语义化骨骼<br/>bone_0..21 → mixamorig:*"]
+    end
+
+    subgraph 动作分支
+        V["视频 MP4"] --> D["③ GVHMR 单目动捕<br/>SMPL-X 参数"]
+        D --> E["④ 标准化为 SMPL-22 NPZ<br/>便携动作文件"]
+    end
+
+    C --> F["⑤ Blender 重定向烘焙<br/>Y-up→Z-up · 骨轴共轭 · 身高缩放"]
+    E --> F
+    F --> G["最终 character_*.glb<br/>含 GVHMR_Action 动画"]
+```
+
+五个阶段由 `run_remote_pipeline.sh` 一键编排，对应 `pipeline/scripts/` 下的脚本
+
+五阶段独立运行与产物说明见 **[pipeline/五阶段独立运行与产物说明.md](pipeline/五阶段独立运行与产物说明.md)**。
+
 ## 已经跑通的案例
 - 完整实施计划方案：@docs/视频到可用游戏角色-完整实施方案.md
 - 完整运行闭环文档：@docs/原始Lux3D-GLB到动画GLB-完整闭环运行手册.md
+- 代码： @pipeline 目录下

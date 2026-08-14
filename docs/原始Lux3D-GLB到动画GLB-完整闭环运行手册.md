@@ -4,6 +4,8 @@
 
 本文不是概念方案，而是本项目在一台无法联网的远程 RTX 5090 机器上实际执行、调试和验收后沉淀的复现手册。文中的命令、目录、数据结构和故障处理均来自本次 `冰雪射手.glb + GVHMR tennis.mp4` 的完整闭环。
 
+> 说明：本仓库中本手册对应的完整管线由根目录 `run_remote_pipeline.sh` 一键编排，所有脚本统一位于 `pipeline/scripts/`，配置位于 `pipeline/config/`。本文中实机命令里曾出现过的 `scripts/`、`config/`、`work/` 等旧路径写法，已按当前仓库实际结构统一更正。
+
 ---
 
 ## 1. 最终结论
@@ -32,7 +34,7 @@ Blender Y-up→Z-up、骨轴共轭、身高比例缩放、关键帧烘焙
 
 ```text
 本地：pipeline/artifacts/冰雪射手_tennis_full_reproduced.glb
-远程：/home/naqi/hackday-character-pipeline/motion/冰雪射手_tennis_full_reproduced.glb
+远程：<output_dir>/motion/冰雪射手_tennis_full_reproduced.glb
 ```
 
 验收数据：
@@ -56,30 +58,38 @@ Blender Y-up→Z-up、骨轴共轭、身高比例缩放、关键帧烘焙
 
 ## 2. 总体架构与数据流
 
+整条链路被拆成两个相互独立、最后汇合的数据分支，并由五个阶段编排完成：
+
 ```mermaid
 flowchart LR
-    A["Lux3D 原始 GLB<br/>静态网格 + PBR 材质"] --> B["SkinTokens<br/>骨架生成 + 蒙皮权重"]
-    B --> C["--use-transfer<br/>转回原始网格"]
-    C --> D["Blender 预处理<br/>清调试物体 + 22 骨语义化"]
-    D --> E["角色数据契约<br/>clean GLB"]
+    A["静态 GLB<br/>外观 + PBR 材质"] --> B["① SkinTokens 自动绑骨/蒙皮<br/>22骨 + 每顶点权重<br/>--use-transfer 保留原网格尺寸"]
+    B --> C["② Blender 清理 + 语义化<br/>bone_0..21 → mixamorig:*"]
 
-    V["单人动作视频"] --> G["GVHMR 预处理<br/>YOLO + ViTPose + HMR2"]
-    G --> H["GVHMR 时序推理<br/>SMPL-X 参数"]
-    H --> I["动作数据契约<br/>SMPL-22 NPZ"]
+    V["视频 MP4"] --> D["③ GVHMR 单目动捕<br/>SMPL-X 参数"]
+    D --> E["④ 标准化为 SMPL-22 NPZ<br/>便携动作文件"]
 
-    E --> R["Blender 重定向器"]
-    I --> R
-    R --> O["动画 GLB<br/>蒙皮 + PBR + GVHMR_Action"]
-    O --> Q["QA<br/>关键帧渲染 + glTF Validator"]
+    C --> F["⑤ Blender 重定向烘焙<br/>Y-up→Z-up · 骨轴共轭 · 身高缩放"]
+    E --> F
+    F --> G["最终 character_*.glb<br/>含 GVHMR_Action 动画"]
 ```
 
-整条链路被拆成两个相互独立、最后汇合的数据分支：
+五个阶段由 `run_remote_pipeline.sh` 一键编排，对应 `pipeline/scripts/` 下的脚本：
 
-1. 角色分支负责回答“哪个顶点受哪根骨骼影响”。
-2. 动作分支负责回答“每一帧每根人体关节如何旋转、骨盆如何移动”。
-3. Blender 重定向器负责将动作分支的数据正确施加到角色分支生成的骨架上。
+| 阶段 | 作用 | 脚本 |
+| --- | --- | --- |
+| ① 绑骨/蒙皮 | 给静态网格生成 22 骨骨架与每顶点权重；`--use-transfer` 把权重转回原始 Lux3D 网格，保留尺寸与 PBR 材质 | `run_skintokens_offline.py` |
+| ② 清理/语义化 | 删除调试物体，`bone_0..21` 重命名为 Mixamo 风格语义名；生成压力测试动画验证蒙皮 | `prepare_and_test_rig.py`（配 `inspect_rig.py` 验收） |
+| ③ 动作提取 | GVHMR 从单人视频恢复 SMPL-X 参数（body_pose/global_orient/transl/betas） | 直接调用 GVHMR `demo.py` |
+| ④ 动作标准化 | 把 GVHMR 结果转成不依赖 GVHMR/Blender 的可移植 SMPL-22 NPZ（兼容压平轴角/四元数/旋转矩阵） | `extract_gvhmr_motion.py` |
+| ⑤ 重定向/烘焙 | 跨坐标系、跨骨轴、跨身高重定向 SMPL-22 动作，逐帧烘焙为 `GVHMR_Action` | `apply_gvhmr_motion.py` |
 
-这样设计的好处是：同一个角色可以复用多个动作，同一个视频动作也可以重定向给多个角色。
+核心设计：把「角色外观」「标准骨架+蒙皮」「与外观无关的动作数据(NPZ)」三类中间资产解耦——同一角色可换多套动作，同一段动作也能重定向给不同角色。GPU 推理（①②③④）在远程离线机器完成，Demo 只读预生成资产。
+
+三条职责边界：
+
+1. 角色分支（①②）回答“哪个顶点受哪根骨骼影响”。
+2. 动作分支（③④）回答“每一帧每根人体关节如何旋转、骨盆如何移动”。
+3. Blender 重定向器（⑤）负责将动作分支的数据正确施加到角色分支生成的骨架上。
 
 ---
 
@@ -92,7 +102,7 @@ flowchart LR
 GPU：NVIDIA GeForce RTX 5090 D v2
 显存：约 24 GB
 NVIDIA Driver：580.95.05
-Blender：4.5.12 LTS
+Blender：4.5 LTS（脚本按 4.5 开发；远程实机版本以 `blender --version` 为准）
 网络：远程机器无法访问互联网
 ```
 
@@ -112,7 +122,7 @@ Blender：4.5.12 LTS
   已有 YOLO、ViTPose、HMR2、GVHMR、SMPL、SMPL-X 检查点
 
 /usr/local/bin/blender
-  Blender 4.5.12 LTS
+  Blender 4.5 LTS
 ```
 
 远程工作区：
@@ -121,11 +131,13 @@ Blender：4.5.12 LTS
 /home/naqi/hackday-character-pipeline
 ```
 
-本地项目目录：
+本地项目目录（仓库根）：
 
 ```text
-C:\Users\admin\Desktop\hackday-0807
+C:\Users\Administrator\Desktop\hackday-0807
 ```
+
+> 大型依赖（SkinTokens、GVHMR、Blender）不随仓库分发，需在远程预置。若位置不同，可用环境变量 `SKINTOKENS_HOME`、`GVHMR_HOME`、`BLENDER_BIN` 覆盖（见 `run_remote_pipeline.sh`）。
 
 ---
 
@@ -171,25 +183,39 @@ C:\Users\admin\Desktop\hackday-0807
 - 人物不要长时间离开画面。
 - 脚部可见有助于根运动与接地判断。
 
-本次使用 GVHMR 自带样例：
+本次跑通闭环使用的动作源是 GVHMR 自带样例：
 
 ```text
 /home/naqi/GVHMR/docs/example_video/tennis.mp4
 312 帧，10.4 秒，812×720
 ```
 
+仓库 `inputs/` 当前存放的输入为：
+
+```text
+inputs/冰雪射手.glb                      # 主要演示角色（静态 GLB）
+inputs/艾莎公主.glb                      # 第二个角色，用于验证动作可复用
+inputs/Chicken-you-are-too-beautiful.mp4 # 待复现动作的视频
+```
+
+上传到远程前，请把这些文件 `scp` 到远程工作区的 `inputs/`（见第 6 节）。
+
 ---
 
 ## 5. 目录布局与文件职责
 
-本地实现文件：
+本地（仓库）实现文件：
 
 ```text
-hackday-character-pipeline/
-├── run_remote_pipeline.sh          # 唯一运行入口
+hackday-0807/
+├── run_remote_pipeline.sh                 # 唯一运行入口
 ├── README.md
-├── inputs/                         # 上传视频和原始 GLB
-├── runs/                           # 运行时生成，已加入 .gitignore
+├── CLAUDE.md / AGENTS.md
+├── docs/                                  # 方案、调研与本手册
+├── inputs/                                # 上传视频和原始 GLB
+│   ├── 冰雪射手.glb
+│   ├── 艾莎公主.glb
+│   └── Chicken-you-are-too-beautiful.mp4
 └── pipeline/
     ├── README.md
     ├── config/
@@ -200,15 +226,15 @@ hackday-character-pipeline/
     │   ├── prepare_and_test_rig.py
     │   ├── extract_gvhmr_motion.py
     │   └── apply_gvhmr_motion.py
-    └── artifacts/
-    ├── 冰雪射手_rigged_transfer_reproduced.glb
-    ├── 冰雪射手_rigged_transfer_clean.glb
-    ├── 冰雪射手_rigged_transfer_test.glb
-    ├── tennis_gvhmr_smpl22.npz
-    ├── 冰雪射手_tennis_full_reproduced.glb
-    ├── gvhmr_tennis_incam.mp4
-    ├── gvhmr_tennis_global.mp4
-    └── *.png / *.json
+    └── artifacts/                         # 本次实测产物，不入库（.gitignore）
+        ├── 冰雪射手_rigged_transfer_reproduced.glb
+        ├── 冰雪射手_rigged_transfer_clean.glb
+        ├── 冰雪射手_rigged_transfer_test.glb
+        ├── tennis_gvhmr_smpl22.npz
+        ├── 冰雪射手_tennis_full_reproduced.glb
+        ├── gvhmr_tennis_incam.mp4
+        ├── gvhmr_tennis_global.mp4
+        └── *.png / *.json
 ```
 
 远程执行时，每个 run 目录结构如下：
@@ -250,6 +276,14 @@ hackday-character-pipeline/
 远程机器无法联网，因此视频、角色和本项目脚本需要从本地上传。
 
 Windows PowerShell：
+
+```powershell
+scp -P 30704 -r `
+  inputs pipeline run_remote_pipeline.sh `
+  naqi@moon-devbox-zw.qunhequnhe.com:/home/naqi/hackday-character-pipeline/
+```
+
+或单独上传关键素材：
 
 ```powershell
 scp -P 30704 "C:\path\character.glb" `
@@ -300,6 +334,14 @@ bash run_remote_pipeline.sh \
 
 - `static` 会给 GVHMR 加 `--static_cam`，跳过视觉里程计；固定机位最稳定。
 - `moving` 不加 `--static_cam`，GVHMR 使用 SimpleVO 估计相机运动。
+
+运行前可先做环境自检：
+
+```bash
+bash run_remote_pipeline.sh --check
+```
+
+出现 `Environment check passed.` 即表示复制后的代码和机器级依赖均可用。
 
 成功后主要结果：
 
@@ -358,7 +400,7 @@ pipeline/scripts/run_skintokens_offline.py
 
 1. 将 SkinTokens 根目录加入 `sys.path`。
 2. 复用原项目 `start_bpy_server()`。
-3. 默认等待最多 600 秒，并每 10 秒输出进度；子进程提前退出时立即报告退出码。
+3. 默认等待最多 600 秒（可用 `--server-timeout` 覆盖），并每 10 秒输出进度；子进程提前退出时立即报告退出码。
 4. 复用原项目 `run_cli()`。
 5. 默认使用原模型检查点和生成参数。
 
@@ -372,6 +414,7 @@ cd /home/naqi/SkinTokens
   --skintokens-home /home/naqi/SkinTokens \
   --input /home/naqi/hackday-character-pipeline/inputs/character.glb \
   --output /home/naqi/hackday-character-pipeline/rigging/character_rigged_raw.glb \
+  --server-timeout 600 \
   --use-transfer
 ```
 
@@ -410,6 +453,8 @@ bone_0 ... bone_21
 ```text
 pipeline/scripts/inspect_rig.py
 ```
+
+> 说明：`inspect_rig.py` 是独立的验收工具，并不在一键脚本的五个阶段内被调用；它用于在改造前人工审查 SkinTokens 的原始绑定输出。`run_remote_pipeline.sh` 开头的静态环境自检（`--check`）会要求它存在，但流水线五阶段本身只跑 `prepare_and_test_rig.py`。
 
 执行：
 
@@ -453,7 +498,7 @@ pipeline/config/skintokens_mixamo_mapping.json
 SkinTokens、目标语义骨和 SMPL-22 的完整对应关系：
 
 | SkinTokens | 目标语义名 | SMPL-22 索引 | SMPL 关节 |
-|---|---|---:|---|
+|---|---:|---|
 | `bone_0` | `mixamorig:Hips` | 0 | pelvis |
 | `bone_1` | `mixamorig:Spine` | 3 | spine1 |
 | `bone_2` | `mixamorig:Spine1` | 6 | spine2 |
@@ -758,6 +803,14 @@ pipeline/scripts/apply_gvhmr_motion.py
   --preview-dir /path/renders/retarget
 ```
 
+可选参数：
+
+```text
+--step N    # 每隔 N 帧采样一次动作帧（默认 1，即全帧）
+```
+
+例如动作过长或只需快速预览时可用 `--step 2` 减半帧数；最终 FPS 会按 `source_fps / step` 调整，动画时长保持一致。
+
 重定向不是简单地把 SMPL 的四元数原样赋给目标骨骼。必须同时处理：
 
 1. 关节语义映射。
@@ -1036,6 +1089,8 @@ character_<video_stem>_animated.glb
 renders/retarget/*.png
 ```
 
+> `inspect_rig.py` 不在这五个阶段内，仅作为绑骨验收的独立工具（见第 9.1 节）。
+
 ---
 
 ## 14. 分阶段手动执行清单
@@ -1058,10 +1113,11 @@ mkdir -p "$RUN"/{rigging,motion,renders,logs}
 ```bash
 cd /home/naqi/SkinTokens
 
-.venv/bin/python -u "$WORK/scripts/run_skintokens_offline.py" \
+.venv/bin/python -u "$WORK/pipeline/scripts/run_skintokens_offline.py" \
   --skintokens-home /home/naqi/SkinTokens \
   --input "$CHARACTER" \
   --output "$RUN/rigging/character_rigged_raw.glb" \
+  --server-timeout 600 \
   --use-transfer \
   2>&1 | tee "$RUN/logs/01_skintokens.log"
 ```
@@ -1070,9 +1126,9 @@ cd /home/naqi/SkinTokens
 
 ```bash
 /usr/local/bin/blender --background \
-  --python "$WORK/scripts/prepare_and_test_rig.py" -- \
+  --python "$WORK/pipeline/scripts/prepare_and_test_rig.py" -- \
   --input "$RUN/rigging/character_rigged_raw.glb" \
-  --mapping "$WORK/scripts/skintokens_mixamo_mapping.json" \
+  --mapping "$WORK/pipeline/config/skintokens_mixamo_mapping.json" \
   --clean-output "$RUN/rigging/character_rigged_clean.glb" \
   --animated-output "$RUN/rigging/character_rig_test.glb" \
   --render-dir "$RUN/renders/rig_test" \
@@ -1115,7 +1171,7 @@ cd /home/naqi/GVHMR
 
 env PYTHONPATH=/home/naqi/GVHMR \
   TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1 \
-  .venv310/bin/python "$WORK/scripts/extract_gvhmr_motion.py" \
+  .venv310/bin/python "$WORK/pipeline/scripts/extract_gvhmr_motion.py" \
     --input "$GVHMR_RESULT" \
     --output "$RUN/motion/${VIDEO_STEM}_smpl22.npz" \
     --manifest "$RUN/motion/${VIDEO_STEM}_motion_manifest.json" \
@@ -1126,7 +1182,7 @@ env PYTHONPATH=/home/naqi/GVHMR \
 
 ```bash
 /usr/local/bin/blender --background \
-  --python "$WORK/scripts/apply_gvhmr_motion.py" -- \
+  --python "$WORK/pipeline/scripts/apply_gvhmr_motion.py" -- \
   --character "$RUN/rigging/character_rigged_clean.glb" \
   --motion "$RUN/motion/${VIDEO_STEM}_smpl22.npz" \
   --output "$RUN/motion/character_${VIDEO_STEM}_animated.glb" \
@@ -1211,7 +1267,7 @@ Get-FileHash `
 |---|---|---|---|
 | GVHMR 无法导入 `hmr4d` | `ModuleNotFoundError` | 仓库根目录未进入模块路径 | 显式设置 `PYTHONPATH=/home/naqi/GVHMR` |
 | YOLO 检查点无法加载 | `Weights only load failed` | PyTorch 2.7 新默认行为 | `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1` |
-| SkinTokens bpy server 启动失败 | 30/180 秒后超时 | 不同容器的网络盘冷启动可能超过 3 分钟 | 包装器默认等待 600 秒、输出进度并监测子进程；可用 `SKINTOKENS_SERVER_TIMEOUT=900` 延长 |
+| SkinTokens bpy server 启动失败 | 30/180 秒后超时 | 不同容器的网络盘冷启动可能超过 3 分钟 | 包装器默认等待 600 秒、输出进度并监测子进程；可用 `--server-timeout` / `SKINTOKENS_SERVER_TIMEOUT=900` 延长 |
 | SkinTokens 默认结果变大且归一化 | 8.64 MB、179,898 顶点、约 2 米 | 默认导出内部展开网格 | 使用 `--use-transfer` 转回原 Lux3D 网格 |
 | SkinTokens 多出 Icosphere | GLB 含额外 42 顶点调试球 | 导出残留 | 只保留绑定 Armature 的 skinned mesh |
 | 预览 Eevee 崩溃 | 缺少 `libEGL.so.1` | 无桌面服务器缺 EGL | 使用 Cycles 离屏渲染 |
@@ -1379,5 +1435,7 @@ bash run_remote_pipeline.sh \
 | `pipeline/artifacts/gvhmr_tennis_incam.mp4` | GVHMR 机内重建可视化 |
 | `pipeline/artifacts/gvhmr_tennis_global.mp4` | GVHMR 世界坐标重建可视化 |
 | `pipeline/artifacts/full_reproduced_frame_*.png` | 最终角色动作关键帧 QA |
+
+> 上表产物为本次闭环在远程机器生成的实测文件，保存在远程工作区对应的 `pipeline/artifacts/`。仓库仓库中该目录已加入 `.gitignore`，大型 GLB/NPZ/视频产物不随 git 提交。
 
 至此，项目已经具备一条可重复运行、可分阶段诊断、可输出标准动画 GLB 的完整演示生产链路。
