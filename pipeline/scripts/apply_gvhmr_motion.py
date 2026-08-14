@@ -193,10 +193,29 @@ def look_at(obj, target):
     obj.rotation_euler = (Vector(target) - obj.location).to_track_quat("-Z", "Y").to_euler()
 
 
+def enable_gpu_rendering():
+    # NVIDIA OptiX (RTX 5090 / Blackwell needs Blender 4.3+).
+    prefs = bpy.context.preferences.addons["cycles"].preferences
+    prefs.compute_device_type = "OPTIX"
+    prefs.get_devices()
+    fallback = None
+    for device in prefs.devices:
+        if device.type == "OPTIX":
+            device.use = True
+            fallback = device
+        elif device.type == "CUDA":
+            fallback = fallback or device
+    if not any(d.use and d.type == "OPTIX" for d in prefs.devices) and fallback is not None:
+        fallback.use = True
+    for scene_obj in bpy.data.scenes:
+        scene_obj.cycles.device = "GPU"
+
+
 def render_previews(preview_dir, meshes, visual_height, frames):
     preview_dir = Path(preview_dir)
     preview_dir.mkdir(parents=True, exist_ok=True)
     scene = bpy.context.scene
+    enable_gpu_rendering()
     scene.render.engine = "CYCLES"
     scene.cycles.samples = 20
     scene.cycles.use_denoising = True

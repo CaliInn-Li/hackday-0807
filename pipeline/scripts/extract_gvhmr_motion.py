@@ -90,7 +90,20 @@ def tensor_shapes(value):
 
 def main():
     args = parse_args()
+
+    if not args.input or not args.input.strip():
+        raise SystemExit(
+            "ERROR: --input is empty. The $GVHMR_RESULT (and $VIDEO_STEM) shell "
+            "variables were probably not defined. Make sure VIDEO_STEM and "
+            "GVHMR_RESULT are set before invoking this script."
+        )
+
     input_path = Path(args.input)
+    if not input_path.is_file():
+        raise SystemExit(
+            f"ERROR: --input is not a file: {input_path} "
+            "(is $GVHMR_RESULT pointing at hmr4d_results.pt?)"
+        )
     pred = torch.load(input_path, map_location="cpu", weights_only=False)
     params = pred["smpl_params_global"]
     rotations = normalized_rotations(params).cpu().numpy().astype(np.float32)
