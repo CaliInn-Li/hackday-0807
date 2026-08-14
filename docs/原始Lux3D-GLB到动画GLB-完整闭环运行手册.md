@@ -262,6 +262,7 @@ hackday-0807/
 └── logs/
     ├── 01_skintokens.log
     ├── 02_prepare_rig.log
+    ├── 02_topology_diagnostic.json
     ├── 03_gvhmr.log
     ├── 04_extract_motion.log
     └── 05_retarget.log
@@ -522,7 +523,21 @@ SkinTokens、目标语义骨和 SMPL-22 的完整对应关系：
 | `bone_20` | `mixamorig:RightFoot` | 8 | right_ankle |
 | `bone_21` | `mixamorig:RightToeBase` | 11 | right_foot |
 
-### 9.3 清理和压力测试
+### 9.3 拓扑门禁（改名前的强制校验）
+
+> ⚠️ 重要：SkinTokens 是自回归自由拓扑生成器，**每次采样输出的骨数和拓扑都不固定**。它不保证像 Mixamo 那样输出标准 22 骨 humanoid。曾有一次采样产出 45 根骨（7 段脊椎、每条腿 8 段、两套手臂、手指独立成链），而旧版脚本只按 `bone_0..bone_21` 的位置硬编码重命名，导致多余骨静默残留、左右错位，骨架完全错误。
+
+因此 `prepare_and_test_rig.py` 现在在**重命名之前**加入强制「拓扑门禁」：基于每根骨的头尾坐标与父子关系做几何分析，只有同时满足以下条件才允许继续：
+
+- 骨总数 == 22；
+- 根骨数量 == 1；
+- 每条腿/臂的末端肢体段数 ≤ 4（分叉点之后计数，不误伤 6 段躯干链）。
+
+不满足时，脚本会**直接抛错并停止**，打印清晰诊断（例如 `bone count 45 != 22`、`leg terminal_depth 8`），并把完整拓扑报告写到 `--diagnostic` 指定的 JSON 文件。这样坏采样不会静默导出 GLB 污染下游的 GVHMR 重定向。
+
+**遇到门禁报错的正确处置**：回到阶段①重新跑 SkinTokens 采样（`--use-transfer`），直到产出标准 22 骨 humanoid——坏骨架是采样本身的问题，无法靠调整映射救回，不要试图手工删骨。
+
+### 9.4 清理和压力测试
 
 执行脚本：
 
@@ -539,20 +554,22 @@ pipeline/scripts/prepare_and_test_rig.py
   --mapping /home/naqi/hackday-character-pipeline/pipeline/config/skintokens_mixamo_mapping.json \
   --clean-output /path/character_rigged_clean.glb \
   --animated-output /path/character_rig_test.glb \
-  --render-dir /path/renders/rig_test
+  --render-dir /path/renders/rig_test \
+  --diagnostic /path/logs/02_topology_diagnostic.json
 ```
 
-脚本做了五件事：
+脚本做了六件事：
 
-1. 只保留真正绑定到 Armature 的 Mesh。
-2. 删除 SkinTokens 导出的额外 `Icosphere` 调试物体。
-3. 将 `bone_0 ... bone_21` 改为 Mixamo 风格语义名。
-4. 解除 skinned mesh 对 Armature 节点的普通父子关系，同时保留 Armature Modifier，消除 glTF 的 `NODE_SKINNED_MESH_NON_ROOT` 警告。
-5. 生成 `RigStressTest` 动画，旋转手臂、前臂、大腿、小腿和胸椎，渲染前/后/左/三分之四视图。
+1. **拓扑门禁**：几何校验骨架是否为标准 22 骨 humanoid，不符则报错并把诊断写到 `--diagnostic` 指定文件。
+2. 只保留真正绑定到 Armature 的 Mesh。
+3. 删除 SkinTokens 导出的额外 `Icosphere` 调试物体。
+4. 将 `bone_0 ... bone_21` 改为 Mixamo 风格语义名。
+5. 解除 skinned mesh 对 Armature 节点的普通父子关系，同时保留 Armature Modifier，消除 glTF 的 `NODE_SKINNED_MESH_NON_ROOT` 警告。
+6. 生成 `RigStressTest` 动画，旋转手臂、前臂、大腿、小腿和胸椎，渲染前/后/左/三分之四视图。
 
 压力测试不是最终动作，而是一个快速质量门禁：如果手脚不动、身体爆炸、配件飞走或出现大量拉丝，就不应继续进入 GVHMR 重定向。
 
-### 9.4 本阶段数据契约
+### 9.5 本阶段数据契约
 
 `character_rigged_clean.glb` 必须满足：
 
@@ -1029,6 +1046,8 @@ rigging/character_rigged_raw.glb
 
 ### `[2/5] Clean rig and assign semantic names`
 
+> 先经过「拓扑门禁」：几何校验骨架为标准 22 骨 humanoid，不符则报错并写 `logs/02_topology_diagnostic.json`（见第 9.3 节）。
+
 输入：
 
 ```text
@@ -1041,6 +1060,7 @@ character_rigged_raw.glb
 character_rigged_clean.glb
 character_rig_test.glb
 renders/rig_test/*.png
+logs/02_topology_diagnostic.json
 ```
 
 ### `[3/5] GVHMR video-to-motion`
@@ -1132,6 +1152,7 @@ cd /home/naqi/SkinTokens
   --clean-output "$RUN/rigging/character_rigged_clean.glb" \
   --animated-output "$RUN/rigging/character_rig_test.glb" \
   --render-dir "$RUN/renders/rig_test" \
+  --diagnostic "$RUN/logs/02_topology_diagnostic.json" \
   2>&1 | tee "$RUN/logs/02_prepare_rig.log"
 ```
 
@@ -1275,6 +1296,7 @@ Get-FileHash `
 | 根位移放大约 7.7 倍 | 角色移出镜头 | Blender 导入绑定空间包围盒误报 2 米 | 从 GLB POSITION accessor 读取真实 0.26 高度 |
 | glTF Validator 警告 | `NODE_SKINNED_MESH_NON_ROOT` | skinned mesh 同时作为 Armature 普通子节点 | 导出前解除普通 parent，保留 Armature Modifier |
 | GVHMR 最后退出失败 | 找不到 `ffmpeg` | 仅横向拼接需要 CLI | 以 `hmr4d_results.pt` 是否存在判断核心成功 |
+| 阶段② 绑定骨骼错乱 | 骨架飞到身体外、手脚位置完全不对 | SkinTokens 某次采样产出 45 骨（7 段脊椎、每条腿 8 段、两套手臂），旧版按 `bone_0..21` 硬编码重命名导致多余骨残留、左右错位 | 在 `prepare_and_test_rig.py` 改名**前**加入「拓扑门禁」：几何校验 22 骨/单根/肢体段数≤4，不符即报错并写诊断 JSON；坏采样回阶段①重新采样 |
 
 这些兼容逻辑都已经固化在一键脚本或 Python 脚本中，不需要每次手工修改第三方仓库。
 

@@ -15,7 +15,253 @@ def parse_args():
     parser.add_argument("--clean-output", required=True)
     parser.add_argument("--animated-output", required=True)
     parser.add_argument("--render-dir", required=True)
+    parser.add_argument("--diagnostic", required=False, default=None,
+                        help="Optional JSON path for the skeleton topology diagnostic.")
     return parser.parse_args(sys.argv[sys.argv.index("--") + 1 :])
+
+
+# ---------------------------------------------------------------------------
+# Skeleton topology gate
+# ---------------------------------------------------------------------------
+#
+# SkinTokens is an autoregressive rigging generator. Unlike Make-It-Animatable
+# or Mixamo, its output topology is NOT guaranteed to be a standard 22-bone
+# humanoid: bone count, chain depth, and left/right ordering all vary between
+# samples. Blindly renaming bone_0..bone_21 to mixamorig:* therefore silently
+# produces a broken rig (limbs mislabeled, 8-segment legs, duplicated arm
+# chains, finger chains, left/right swapped).
+#
+# This analyzer derives the *geometric* topology from each bone's head/tail
+# positions and parent links, then checks it against the expected humanoid
+# structure. It rejects non-humanoid samples *before* any renaming, so a bad
+# rig never propagates downstream into the GVHMR retarget stage.
+#
+# Coordinate convention observed in SkinTokens output: Z up, X left/right,
+# Y depth (tail of a directional chain descends in +Y for legs).
+
+# Expected Mixamo-22 semantics, in order of the config mapping keys.
+EXPECTED_CHAIN = {
+    # (semantic name, expected parent, approximate straight-line direction)
+    "mixamorig:Hips":         (None,   (0, 0, 1)),
+    "mixamorig:Spine":        ("mixamorig:Hips",         (0, 0, 1)),
+    "mixamorig:Spine1":       ("mixamorig:Spine",        (0, 0, 1)),
+    "mixamorig:Spine2":       ("mixamorig:Spine1",       (0, 0, 1)),
+    "mixamorig:Neck":         ("mixamorig:Spine2",       (0, 0, 1)),
+    "mixamorig:Head":         ("mixamorig:Neck",         (0, 0, 1)),
+    "mixamorig:LeftShoulder": ("mixamorig:Spine2",      (-1, 0, 0)),
+    "mixamorig:LeftArm":      ("mixamorig:LeftShoulder", (-1, 0, 0)),
+    "mixamorig:LeftForeArm":  ("mixamorig:LeftArm",      (-1, 0, 0)),
+    "mixamorig:LeftHand":     ("mixamorig:LeftForeArm",  (-1, 0, 0)),
+    "mixamorig:RightShoulder": ("mixamorig:Spine2",      (1, 0, 0)),
+    "mixamorig:RightArm":     ("mixamorig:RightShoulder", (1, 0, 0)),
+    "mixamorig:RightForeArm": ("mixamorig:RightArm",      (1, 0, 0)),
+    "mixamorig:RightHand":    ("mixamorig:RightForeArm",  (1, 0, 0)),
+    "mixamorig:LeftUpLeg":    ("mixamorig:Hips",         (0, 1, -1)),
+    "mixamorig:LeftLeg":      ("mixamorig:LeftUpLeg",    (0, 1, -1)),
+    "mixamorig:LeftFoot":     ("mixamorig:LeftLeg",      (0, 1, 0)),
+    "mixamorig:LeftToeBase":  ("mixamorig:LeftFoot",     (0, 1, 0)),
+    "mixamorig:RightUpLeg":   ("mixamorig:Hips",         (0, 1, -1)),
+    "mixamorig:RightLeg":     ("mixamorig:RightUpLeg",   (0, 1, -1)),
+    "mixamorig:RightFoot":    ("mixamorig:RightLeg",     (0, 1, 0)),
+    "mixamorig:RightToeBase": ("mixamorig:RightFoot",    (0, 1, 0)),
+}
+
+
+def bone_direction(bone):
+    """Unit vector from head to tail in the armature's rest space."""
+    direction = Vector(bone.tail_local) - Vector(bone.head_local)
+    if direction.length < 1e-8:
+        return Vector((0, 0, 0))
+    return direction.normalized()
+
+
+def child_chains(bone, bones_by_parent):
+    """Return list of chains (each a list of bone names) rooted at this bone's
+    children, following the single-child path until a leaf or a fork."""
+    chains = []
+    for child_name in bones_by_parent.get(bone.name, []):
+        chain = [child_name]
+        current = child_name
+        while True:
+            children = bones_by_parent.get(current, [])
+            if len(children) != 1:
+                break
+            nxt = children[0]
+            chain.append(nxt)
+            current = nxt
+        chains.append(chain)
+    return chains
+
+
+def describe_topology(armature):
+    """Return a dict describing the inferred geometric topology."""
+    bones = {b.name: b for b in armature.data.bones}
+    bones_by_parent = {}
+    for b in armature.data.bones:
+        bones_by_parent.setdefault(b.parent.name if b.parent else None, []).append(b.name)
+
+    roots = [b.name for b in armature.data.bones if b.parent is None]
+
+    report = {
+        "bone_count": len(bones),
+        "root_count": len(roots),
+        "roots": roots,
+        "bones": [],
+    }
+
+    for b in armature.data.bones:
+        direction = bone_direction(b)
+        report["bones"].append({
+            "name": b.name,
+            "parent": b.parent.name if b.parent else None,
+            "head": [round(v, 6) for v in b.head_local],
+            "tail": [round(v, 6) for v in b.tail_local],
+            "length": round(b.length, 6),
+            "direction": [round(v, 4) for v in direction],
+            "children": sorted(bones_by_parent.get(b.name, [])),
+        })
+
+    # Chain analysis: for each root, enumerate direct child chains.
+    chains = []
+    for root in roots:
+        for chain in child_chains(bones[root], bones_by_parent):
+            chains.append({"root": root, "chain": chain, "depth": len(chain)})
+    report["root_chains"] = chains
+    return report
+
+
+def leaf_chains(bones, bones_by_parent):
+    """Enumerate every root-to-leaf path, yielding (path, terminal_depth) where
+    `path` is a list of bpy bone objects (root first, leaf last).
+
+    `terminal_depth` counts segments *after* the last fork (a fork owns two or
+    more children), which isolates the length of the limb (arm/leg/fingers)
+    from the shared torso chain above it. This avoids flagging a legitimate
+    humanoid whose root-to-leaf path necessarily includes the pelvis + spine.
+    `bones_by_parent` maps a parent bone *name* to a list of child bone *names*.
+    """
+    roots = [b for b in bones.values() if b.parent is None]
+    results = []
+    for root in roots:
+        def walk(bone, path, post_fork_depth):
+            children = [bones[n] for n in bones_by_parent.get(bone.name, [])]
+            if not children:
+                results.append((path, post_fork_depth))
+                return
+            # A fork means the shared chain ends; reset the limb counter.
+            next_depth = 1 if len(children) > 1 else post_fork_depth + 1
+            for child in children:
+                walk(child, path + [child], next_depth)
+        walk(root, [root], 0)
+    return results
+
+
+def _classify_path(path):
+    head = Vector(path[0].head_local)
+    tip = Vector(path[-1].tail_local)
+    delta = tip - head
+    length = delta.length
+    if length < 1e-8:
+        return ("degenerate", 0.0)
+    z_component = delta.z / length
+    x_component = delta.x / length
+    y_component = delta.y / length
+    if z_component > 0.6:
+        kind = "torso"
+    elif x_component > 0.5 or x_component < -0.5:
+        kind = "arm"
+    elif z_component < -0.3 and abs(y_component) > 0.3:
+        kind = "leg"
+    else:
+        kind = "other"
+    return (kind, length)
+
+
+def classify_chains(armature):
+    """Classify all root-to-leaf chains and flag structural anomalies."""
+    bones = {b.name: b for b in armature.data.bones}
+    bones_by_parent = {}
+    for b in armature.data.bones:
+        bones_by_parent.setdefault(b.parent.name if b.parent else None, []).append(b.name)
+
+    roots = [b.name for b in armature.data.bones if b.parent is None]
+    problems = []
+
+    if len(roots) != 1:
+        problems.append(f"expected exactly 1 root bone, found {len(roots)}: {roots}")
+    if len(bones) != 22:
+        problems.append(f"expected 22 bones (standard Mixamo humanoid), found {len(bones)}")
+    if roots:
+        paths = leaf_chains(bones, bones_by_parent)
+        report_chains = []
+        for path, terminal_depth in paths:
+            kind, length = _classify_path(path)
+            report_chains.append({
+                "chain": [b.name for b in path],
+                "depth": len(path),
+                "terminal_depth": terminal_depth,
+                "kind": kind,
+                "length": round(length, 4),
+            })
+            # The shared torso chain is ignored for limb-depth checks; only the
+            # terminal limb segment (after the last fork) is measured.
+            if kind == "leg" and terminal_depth > 4:
+                problems.append(
+                    f"leg limb {'/'.join(b.name for b in path[-terminal_depth:])} has "
+                    f"{terminal_depth} segments (humanoid leg should be <=4: "
+                    "UpLeg->Leg->Foot->ToeBase)."
+                )
+            if kind == "arm" and terminal_depth > 4:
+                problems.append(
+                    f"arm limb {'/'.join(b.name for b in path[-terminal_depth:])} has "
+                    f"{terminal_depth} segments (humanoid arm should be <=4: "
+                    "Shoulder->Arm->ForeArm->Hand)."
+                )
+        return {"root": roots[0], "chains": report_chains, "problems": problems}, problems
+
+    return {"bone_count": len(bones), "problems": problems}, problems
+
+
+def validate_humanoid(armature, diagnostic_path=None):
+    """Run the topology gate. Return a diagnostic dict. Raise RuntimeError with
+    a readable summary if the skeleton is not a standard 22-bone humanoid."""
+    report = describe_topology(armature)
+    _, problems = classify_chains(armature)
+
+    # Structural checks independent of naming.
+    if report["bone_count"] != 22:
+        problems.append(
+            f"bone count {report['bone_count']} != 22; "
+            "SkinTokens produced a non-standard skeleton. Re-run the sampling "
+            "(--use-transfer) until it yields a 22-bone humanoid, or fix the "
+            "topology before semantic renaming."
+        )
+    if report["root_count"] != 1:
+        problems.append(
+            f"root count {report['root_count']} != 1; expected a single pelvis root."
+        )
+
+    diagnostic = {
+        "armature": armature.name,
+        "topology": report,
+        "problems": sorted(set(problems)),
+        "is_valid_humanoid": len(problems) == 0,
+    }
+
+    if diagnostic_path:
+        path = Path(diagnostic_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(diagnostic, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if problems:
+        summary = "\n".join(f"  - {p}" for p in sorted(set(problems)))
+        raise RuntimeError(
+            "Skeleton is not a standard 22-bone humanoid; refusing to apply "
+            "semantic mapping. Diagnostics:\n" + summary +
+            ("\nFull report written to: " + str(diagnostic_path) if diagnostic_path else "")
+        )
+
+    return diagnostic
 
 
 def reset_scene():
@@ -227,6 +473,12 @@ def main():
     mapping = json.loads(Path(args.mapping).read_text(encoding="utf-8"))
     reset_scene()
     armature, meshes = import_character(args.input)
+
+    # Topology gate: refuse to rename if the rig is not a standard 22-bone
+    # humanoid. A bad SkinTokens sample would otherwise be silently mislabeled
+    # and corrupt every downstream retarget stage.
+    validate_humanoid(armature, diagnostic_path=args.diagnostic)
+
     rename_skeleton(armature, meshes, mapping)
     detach_skinned_mesh_roots(meshes)
     export_glb(args.clean_output, armature, meshes, animations=False)
