@@ -33,7 +33,7 @@ SkinTokens 阶段使用 `--use-transfer`，将预测权重转回原 Lux3D 网格
 ## 关键实现
 
 - `scripts/inspect_rig.py`：骨骼、层级、权重覆盖率验收。
-- `scripts/run_skintokens_offline.py`：把原项目 30 秒 Blender 服务超时扩展到 180 秒，适配网络盘冷启动，不修改 SkinTokens 仓库。
+- `scripts/run_skintokens_offline.py`：把原项目 30 秒 Blender 服务超时扩展到默认 600 秒，并持续输出进度、监测子进程退出，适配网络盘冷启动，不修改 SkinTokens 仓库。
 - `scripts/prepare_and_test_rig.py`：清理调试网格、语义化骨骼、修复 glTF 根节点警告、生成压力测试动作与四视图。
 - `scripts/extract_gvhmr_motion.py`：兼容压平轴角、关节轴角和旋转矩阵，导出统一 SMPL-22 NPZ。
 - `scripts/apply_gvhmr_motion.py`：Y-up→Z-up 坐标变换、22 骨映射、静态骨轴共轭、身高比例位移、逐帧烘焙和 QA 渲染。

@@ -9,6 +9,7 @@ CONFIG_DIR="$PIPELINE_ROOT/config"
 SKINTOKENS_HOME=${SKINTOKENS_HOME:-"$HOME/SkinTokens"}
 GVHMR_HOME=${GVHMR_HOME:-"$HOME/GVHMR"}
 BLENDER_BIN=${BLENDER_BIN:-/usr/local/bin/blender}
+SKINTOKENS_SERVER_TIMEOUT=${SKINTOKENS_SERVER_TIMEOUT:-600}
 SKIN_PY="$SKINTOKENS_HOME/.venv/bin/python"
 GVHMR_PY="$GVHMR_HOME/.venv310/bin/python"
 MAPPING="$CONFIG_DIR/skintokens_mixamo_mapping.json"
@@ -87,6 +88,7 @@ echo "[1/5] SkinTokens automatic rigging"
     --skintokens-home "$SKINTOKENS_HOME" \
     --input "$CHARACTER" \
     --output "$RIGGED" \
+    --server-timeout "$SKINTOKENS_SERVER_TIMEOUT" \
     --use-transfer
 ) 2>&1 | tee "$OUTPUT/logs/01_skintokens.log"
 

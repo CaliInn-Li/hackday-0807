@@ -358,7 +358,7 @@ pipeline/scripts/run_skintokens_offline.py
 
 1. 将 SkinTokens 根目录加入 `sys.path`。
 2. 复用原项目 `start_bpy_server()`。
-3. 调用 `wait_for_bpy_server(timeout=180)`。
+3. 默认等待最多 600 秒，并每 10 秒输出进度；子进程提前退出时立即报告退出码。
 4. 复用原项目 `run_cli()`。
 5. 默认使用原模型检查点和生成参数。
 
@@ -971,7 +971,7 @@ rigging/character_rigged_raw.glb
 
 ```text
 --use-transfer
---server-timeout 180
+--server-timeout 600
 ```
 
 ### `[2/5] Clean rig and assign semantic names`
@@ -1211,7 +1211,7 @@ Get-FileHash `
 |---|---|---|---|
 | GVHMR 无法导入 `hmr4d` | `ModuleNotFoundError` | 仓库根目录未进入模块路径 | 显式设置 `PYTHONPATH=/home/naqi/GVHMR` |
 | YOLO 检查点无法加载 | `Weights only load failed` | PyTorch 2.7 新默认行为 | `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1` |
-| SkinTokens bpy server 启动失败 | 30 秒后超时 | 网络盘冷启动约 80–90 秒 | 包装器将等待扩展到 180 秒，不改原仓库 |
+| SkinTokens bpy server 启动失败 | 30/180 秒后超时 | 不同容器的网络盘冷启动可能超过 3 分钟 | 包装器默认等待 600 秒、输出进度并监测子进程；可用 `SKINTOKENS_SERVER_TIMEOUT=900` 延长 |
 | SkinTokens 默认结果变大且归一化 | 8.64 MB、179,898 顶点、约 2 米 | 默认导出内部展开网格 | 使用 `--use-transfer` 转回原 Lux3D 网格 |
 | SkinTokens 多出 Icosphere | GLB 含额外 42 顶点调试球 | 导出残留 | 只保留绑定 Armature 的 skinned mesh |
 | 预览 Eevee 崩溃 | 缺少 `libEGL.so.1` | 无桌面服务器缺 EGL | 使用 Cycles 离屏渲染 |
