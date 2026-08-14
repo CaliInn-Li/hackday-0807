@@ -185,18 +185,22 @@ C:\Users\admin\Desktop\hackday-0807
 本地实现文件：
 
 ```text
-pipeline/
+hackday-character-pipeline/
+├── run_remote_pipeline.sh          # 唯一运行入口
 ├── README.md
-├── run_remote_pipeline.sh
-├── config/
-│   └── skintokens_mixamo_mapping.json
-├── scripts/
-│   ├── run_skintokens_offline.py
-│   ├── inspect_rig.py
-│   ├── prepare_and_test_rig.py
-│   ├── extract_gvhmr_motion.py
-│   └── apply_gvhmr_motion.py
-└── artifacts/
+├── inputs/                         # 上传视频和原始 GLB
+├── runs/                           # 运行时生成，已加入 .gitignore
+└── pipeline/
+    ├── README.md
+    ├── config/
+    │   └── skintokens_mixamo_mapping.json
+    ├── scripts/
+    │   ├── run_skintokens_offline.py
+    │   ├── inspect_rig.py
+    │   ├── prepare_and_test_rig.py
+    │   ├── extract_gvhmr_motion.py
+    │   └── apply_gvhmr_motion.py
+    └── artifacts/
     ├── 冰雪射手_rigged_transfer_reproduced.glb
     ├── 冰雪射手_rigged_transfer_clean.glb
     ├── 冰雪射手_rigged_transfer_test.glb
@@ -271,7 +275,7 @@ sha256sum /home/naqi/hackday-character-pipeline/inputs/character.glb
 ### 7.1 固定机位视频
 
 ```bash
-cd /home/naqi/hackday-character-pipeline/scripts
+cd /home/naqi/hackday-character-pipeline
 
 bash run_remote_pipeline.sh \
   /home/naqi/hackday-character-pipeline/inputs/action.mp4 \
@@ -283,7 +287,7 @@ bash run_remote_pipeline.sh \
 ### 7.2 移动机位视频
 
 ```bash
-cd /home/naqi/hackday-character-pipeline/scripts
+cd /home/naqi/hackday-character-pipeline
 
 bash run_remote_pipeline.sh \
   /home/naqi/hackday-character-pipeline/inputs/action.mp4 \
@@ -364,7 +368,7 @@ pipeline/scripts/run_skintokens_offline.py
 cd /home/naqi/SkinTokens
 
 .venv/bin/python -u \
-  /home/naqi/hackday-character-pipeline/scripts/run_skintokens_offline.py \
+  /home/naqi/hackday-character-pipeline/pipeline/scripts/run_skintokens_offline.py \
   --skintokens-home /home/naqi/SkinTokens \
   --input /home/naqi/hackday-character-pipeline/inputs/character.glb \
   --output /home/naqi/hackday-character-pipeline/rigging/character_rigged_raw.glb \
@@ -411,7 +415,7 @@ pipeline/scripts/inspect_rig.py
 
 ```bash
 /usr/local/bin/blender --background \
-  --python /home/naqi/hackday-character-pipeline/scripts/inspect_rig.py -- \
+  --python /home/naqi/hackday-character-pipeline/pipeline/scripts/inspect_rig.py -- \
   --input /path/character_rigged_raw.glb \
   --output /path/character_rig_summary.json
 ```
@@ -485,9 +489,9 @@ pipeline/scripts/prepare_and_test_rig.py
 
 ```bash
 /usr/local/bin/blender --background \
-  --python /home/naqi/hackday-character-pipeline/scripts/prepare_and_test_rig.py -- \
+  --python /home/naqi/hackday-character-pipeline/pipeline/scripts/prepare_and_test_rig.py -- \
   --input /path/character_rigged_raw.glb \
-  --mapping /home/naqi/hackday-character-pipeline/scripts/skintokens_mixamo_mapping.json \
+  --mapping /home/naqi/hackday-character-pipeline/pipeline/config/skintokens_mixamo_mapping.json \
   --clean-output /path/character_rigged_clean.glb \
   --animated-output /path/character_rig_test.glb \
   --render-dir /path/renders/rig_test
@@ -674,7 +678,7 @@ env \
   PYTHONPATH=/home/naqi/GVHMR \
   TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1 \
   .venv310/bin/python \
-    /home/naqi/hackday-character-pipeline/scripts/extract_gvhmr_motion.py \
+    /home/naqi/hackday-character-pipeline/pipeline/scripts/extract_gvhmr_motion.py \
     --input /path/hmr4d_results.pt \
     --output /path/action_smpl22.npz \
     --manifest /path/action_motion_manifest.json
@@ -746,7 +750,7 @@ pipeline/scripts/apply_gvhmr_motion.py
 
 ```bash
 /usr/local/bin/blender --background \
-  --python /home/naqi/hackday-character-pipeline/scripts/apply_gvhmr_motion.py -- \
+  --python /home/naqi/hackday-character-pipeline/pipeline/scripts/apply_gvhmr_motion.py -- \
   --character /path/character_rigged_clean.glb \
   --motion /path/action_smpl22.npz \
   --output /path/character_action_animated.glb \
@@ -947,7 +951,7 @@ F / 3
 
 ## 13. 一键脚本内部五个阶段
 
-`pipeline/run_remote_pipeline.sh` 按以下顺序执行：
+根目录 `run_remote_pipeline.sh` 按以下顺序执行，并根据自身位置定位 `pipeline/scripts` 与 `pipeline/config`：
 
 ### `[1/5] SkinTokens automatic rigging`
 
@@ -1333,7 +1337,7 @@ UPLOADED
 1. 远程存在 `/home/naqi/SkinTokens` 及检查点。
 2. 远程存在 `/home/naqi/GVHMR` 及检查点。
 3. `/usr/local/bin/blender` 可运行。
-4. `/home/naqi/hackday-character-pipeline/scripts` 已同步本项目脚本。
+4. 整个项目已按原目录结构复制到 `/home/naqi/hackday-character-pipeline`。
 5. 视频和角色已上传到远程。
 6. 选择 `static` 或 `moving`。
 7. 使用新的 run 输出目录执行一键命令。
@@ -1344,7 +1348,7 @@ UPLOADED
 最简运行入口：
 
 ```bash
-cd /home/naqi/hackday-character-pipeline/scripts
+cd /home/naqi/hackday-character-pipeline
 
 bash run_remote_pipeline.sh \
   /absolute/path/action.mp4 \

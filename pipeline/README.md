@@ -20,38 +20,7 @@ SkinTokens 阶段使用 `--use-transfer`，将预测权重转回原 Lux3D 网格
 
 推荐最终 GLB 已通过 Khronos glTF Validator：0 error、0 warning。模型包含 22 根骨骼、完整蒙皮、PBR 材质与一条 `GVHMR_Action` 动画；SHA-256 为 `157F10AE17A0FC7492ABAEF92635525DFCD7F4D2DFBE032CBA854CBB2788AF3B`。
 
-## 在远程机器执行
-
-远程工作目录已经建立在：
-
-```text
-/home/naqi/hackday-character-pipeline
-```
-
-一键命令：
-
-```bash
-cd /home/naqi/hackday-character-pipeline/scripts
-bash run_remote_pipeline.sh \
-  /absolute/path/to/action.mp4 \
-  /absolute/path/to/character.glb \
-  /home/naqi/hackday-character-pipeline/runs/my_run \
-  static
-```
-
-最后一个参数：
-
-- `static`：固定机位，跳过视觉里程计，最稳定、最快。
-- `moving`：手持/移动机位，启用 GVHMR 的相机运动估计。
-
-远程机器无法联网时，先从本机上传视频和模型：
-
-```powershell
-scp -P 30704 "C:\path\action.mp4" naqi@moon-devbox-zw.qunhequnhe.com:/home/naqi/hackday-character-pipeline/inputs/
-scp -P 30704 "C:\path\character.glb" naqi@moon-devbox-zw.qunhequnhe.com:/home/naqi/hackday-character-pipeline/inputs/
-```
-
-不需要联网安装依赖；脚本复用远程已有的 SkinTokens、GVHMR、检查点和 Blender 4.5。
+## 在远程机器执行`run_remote_pipeline.sh`
 
 ## 输入要求与生产注意项
 

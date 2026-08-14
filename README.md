@@ -1,43 +1,62 @@
-# Hackday
+# Hackday：视频到可用游戏角色
 
-> 调研笔记与选题建议：[docs/aholo-调研与选题.md](docs/aholo-调研与选题.md)
+## 如何运行
 
-## 赛道
-###  Aholo专题赛道 (Aholo Creator Track)
-你需要调研：Aholo是什么，他的api能提供哪些机会？
+远程机器仍需保留这些依赖：
 
-- **赛道简介**：基于 Aholo 的 3D高斯重建与生成能力以及面向开发者的 API 能力，打造具有可玩性、互动性或视觉冲击力的空间应用。例如参赛者可以利用 Aholo 的 3DGS 重建技术，将现实场景快速转化为三维数字空间，并在此基础上叠加交互、叙事或游戏化设计等。
-- **核心关键词**：3DGS重建、空间生成、开发者API、空间应用
+- `/home/naqi/SkinTokens`：包含 `.venv` 和模型检查点。
+- `/home/naqi/GVHMR`：包含 `.venv310`、GVHMR/HMR2/ViTPose/YOLO/SMPL-X 检查点。
+- `/usr/local/bin/blender`：Blender 4.5。
 
-####  奖金池：¥16,000
+这些大型依赖不包含在本仓库中。使用不同位置时，可以设置 `SKINTOKENS_HOME`、`GVHMR_HOME`、`BLENDER_BIN`。
 
-####  奖项设置
-- **一等奖** × 1：6000元
-- **二等奖** × 1：4000元
-- **三等奖** × 1：2000元
-- **OPT (One Person Team) 奖** × 2：1000元
-- **单项奖** × 2：1000元团建基金
+**由于远程机器不能联网，不能执行`git clone`，因此需要本地复制**
 
-> **注**：具体奖项会根据最终赛道报名队伍数量适当调整，不重复获奖；参赛报名即可拥有 Geek范儿文化衫 & 定制周边。
+1. 在本机项目目录（`hackday-0807`）下执行：
 
----
+```powershell
+scp -P 30704 -r `
+  inputs `
+  pipeline `
+  run_remote_pipeline.sh `
+  naqi@<replace-with-real-addr>:/home/naqi/<directory>/
+```
 
-###  空间智能开放赛道 (Spatial Open Track)
+Linux/macOS 下执行（续行符为反斜杠 `\`）：
 
-- **赛道简介**：依托内外部空间智能技术、开源模型及各类开放 API，打造空间智能的创新应用。
-- **核心关键词**：空间智能、开源模型、开放API、创新应用
+```bash
+scp -P 30704 -r \
+  inputs \
+  pipeline \
+  run_remote_pipeline.sh \
+  naqi@<replace-with-real-addr>:/home/naqi/<directory>/
+```
 
-####  奖金池：¥16,000
+2. 复制后先检查所有路径：
 
-####  奖项设置
-- **一等奖** × 1：6000元
-- **二等奖** × 1：4000元
-- **三等奖** × 1：2000元
-- **OPT (One Person Team) 奖** × 2：1000元
-- **单项奖** × 2：1000元团建基金
+```bash
+cd /home/naqi/<directory>
+chmod +x run_remote_pipeline.sh
+bash run_remote_pipeline.sh --check
+```
 
-> **注**：具体奖项会根据最终赛道报名队伍数量适当调整，不重复获奖；参赛报名即可拥有 Geek范儿文化衫 & 定制周边。
+出现 `Environment check passed.` 即表示复制后的代码和机器级依赖均可用。
 
+## 一键运行
 
+3. 把输入放进 `inputs/`，然后在仓库根目录执行：
 
----
+```bash
+bash run_remote_pipeline.sh \
+  inputs/action.mp4 \
+  inputs/character.glb \
+  runs/<名称> \
+  static
+```
+
+- `static`：固定机位，速度快、稳定。
+- `moving`：移动机位，额外估计相机运动。
+- 最终动画：`runs/action_character/motion/character_action_animated.glb`。
+- 日志和中间产物全部保存在对应的 `runs/<名称>/` 中。
+
+完整原理与故障处理见 [完整闭环运行手册](docs/原始Lux3D-GLB到动画GLB-完整闭环运行手册.md)，实测产物说明见 [pipeline/README.md](pipeline/README.md)。
