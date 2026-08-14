@@ -18,7 +18,7 @@
 scp -P 30704 -r `
   inputs `
   pipeline `
-  run_remote_pipeline.sh `
+  run.sh `
   naqi@<replace-with-real-addr>:/home/naqi/<directory>/
 ```
 
@@ -28,7 +28,7 @@ Linux/macOS 下执行（续行符为反斜杠 `\`）：
 scp -P 30704 -r \
   inputs \
   pipeline \
-  run_remote_pipeline.sh \
+  run.sh \
   naqi@<replace-with-real-addr>:/home/naqi/<directory>/
 ```
 
@@ -36,8 +36,8 @@ scp -P 30704 -r \
 
 ```bash
 cd /home/naqi/<directory>
-chmod +x run_remote_pipeline.sh
-bash run_remote_pipeline.sh --check
+chmod +x run.sh
+bash run.sh --check
 ```
 
 出现 `Environment check passed.` 即表示复制后的代码和机器级依赖均可用。
@@ -47,7 +47,7 @@ bash run_remote_pipeline.sh --check
 3. 把输入放进 `inputs/`，然后在仓库根目录执行：
 
 ```bash
-bash run_remote_pipeline.sh \
+bash run.sh \
   inputs/action.mp4 \
   inputs/character.glb \
   runs/<名称> \

@@ -31,7 +31,7 @@ flowchart LR
     F --> G["最终 character_*.glb<br/>含 GVHMR_Action 动画"]
 ```
 
-五个阶段由 `run_remote_pipeline.sh` 一键编排，对应 `pipeline/scripts/` 下的脚本
+五个阶段由 `run.sh` 一键编排，对应 `pipeline/scripts/` 下的脚本
 
 五阶段独立运行与产物说明见 **[pipeline/五阶段独立运行与产物说明.md](pipeline/五阶段独立运行与产物说明.md)**。
 

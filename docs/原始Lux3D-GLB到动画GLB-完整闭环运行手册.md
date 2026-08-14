@@ -4,7 +4,7 @@
 
 本文不是概念方案，而是本项目在一台无法联网的远程 RTX 5090 机器上实际执行、调试和验收后沉淀的复现手册。文中的命令、目录、数据结构和故障处理均来自本次 `冰雪射手.glb + GVHMR tennis.mp4` 的完整闭环。
 
-> 说明：本仓库中本手册对应的完整管线由根目录 `run_remote_pipeline.sh` 一键编排，所有脚本统一位于 `pipeline/scripts/`，配置位于 `pipeline/config/`。本文中实机命令里曾出现过的 `scripts/`、`config/`、`work/` 等旧路径写法，已按当前仓库实际结构统一更正。
+> 说明：本仓库中本手册对应的完整管线由根目录 `run.sh` 一键编排，所有脚本统一位于 `pipeline/scripts/`，配置位于 `pipeline/config/`。本文中实机命令里曾出现过的 `scripts/`、`config/`、`work/` 等旧路径写法，已按当前仓库实际结构统一更正。
 
 ---
 
@@ -73,7 +73,7 @@ flowchart LR
     F --> G["最终 character_*.glb<br/>含 GVHMR_Action 动画"]
 ```
 
-五个阶段由 `run_remote_pipeline.sh` 一键编排，对应 `pipeline/scripts/` 下的脚本：
+五个阶段由 `run.sh` 一键编排，对应 `pipeline/scripts/` 下的脚本：
 
 | 阶段 | 作用 | 脚本 |
 | --- | --- | --- |
@@ -137,7 +137,7 @@ Blender：4.5 LTS（脚本按 4.5 开发；远程实机版本以 `blender --vers
 C:\Users\Administrator\Desktop\hackday-0807
 ```
 
-> 大型依赖（SkinTokens、GVHMR、Blender）不随仓库分发，需在远程预置。若位置不同，可用环境变量 `SKINTOKENS_HOME`、`GVHMR_HOME`、`BLENDER_BIN` 覆盖（见 `run_remote_pipeline.sh`）。
+> 大型依赖（SkinTokens、GVHMR、Blender）不随仓库分发，需在远程预置。若位置不同，可用环境变量 `SKINTOKENS_HOME`、`GVHMR_HOME`、`BLENDER_BIN` 覆盖（见 `run.sh`）。
 
 ---
 
@@ -208,7 +208,7 @@ inputs/Chicken-you-are-too-beautiful.mp4 # 待复现动作的视频
 
 ```text
 hackday-0807/
-├── run_remote_pipeline.sh                 # 唯一运行入口
+├── run.sh                 # 唯一运行入口
 ├── README.md
 ├── CLAUDE.md / AGENTS.md
 ├── docs/                                  # 方案、调研与本手册
@@ -280,7 +280,7 @@ Windows PowerShell：
 
 ```powershell
 scp -P 30704 -r `
-  inputs pipeline run_remote_pipeline.sh `
+  inputs pipeline run.sh `
   naqi@moon-devbox-zw.qunhequnhe.com:/home/naqi/hackday-character-pipeline/
 ```
 
@@ -312,7 +312,7 @@ sha256sum /home/naqi/hackday-character-pipeline/inputs/character.glb
 ```bash
 cd /home/naqi/hackday-character-pipeline
 
-bash run_remote_pipeline.sh \
+bash run.sh \
   /home/naqi/hackday-character-pipeline/inputs/action.mp4 \
   /home/naqi/hackday-character-pipeline/inputs/character.glb \
   /home/naqi/hackday-character-pipeline/runs/action_character \
@@ -324,7 +324,7 @@ bash run_remote_pipeline.sh \
 ```bash
 cd /home/naqi/hackday-character-pipeline
 
-bash run_remote_pipeline.sh \
+bash run.sh \
   /home/naqi/hackday-character-pipeline/inputs/action.mp4 \
   /home/naqi/hackday-character-pipeline/inputs/character.glb \
   /home/naqi/hackday-character-pipeline/runs/action_character_moving \
@@ -339,7 +339,7 @@ bash run_remote_pipeline.sh \
 运行前可先做环境自检：
 
 ```bash
-bash run_remote_pipeline.sh --check
+bash run.sh --check
 ```
 
 出现 `Environment check passed.` 即表示复制后的代码和机器级依赖均可用。
@@ -455,7 +455,7 @@ bone_0 ... bone_21
 pipeline/scripts/inspect_rig.py
 ```
 
-> 说明：`inspect_rig.py` 是独立的验收工具，并不在一键脚本的五个阶段内被调用；它用于在改造前人工审查 SkinTokens 的原始绑定输出。`run_remote_pipeline.sh` 开头的静态环境自检（`--check`）会要求它存在，但流水线五阶段本身只跑 `prepare_and_test_rig.py`。
+> 说明：`inspect_rig.py` 是独立的验收工具，并不在一键脚本的五个阶段内被调用；它用于在改造前人工审查 SkinTokens 的原始绑定输出。`run.sh` 开头的静态环境自检（`--check`）会要求它存在，但流水线五阶段本身只跑 `prepare_and_test_rig.py`。
 
 执行：
 
@@ -1021,7 +1021,7 @@ F / 3
 
 ## 13. 一键脚本内部五个阶段
 
-根目录 `run_remote_pipeline.sh` 按以下顺序执行，并根据自身位置定位 `pipeline/scripts` 与 `pipeline/config`：
+根目录 `run.sh` 按以下顺序执行，并根据自身位置定位 `pipeline/scripts` 与 `pipeline/config`：
 
 ### `[1/5] SkinTokens automatic rigging`
 
@@ -1428,7 +1428,7 @@ UPLOADED
 ```bash
 cd /home/naqi/hackday-character-pipeline
 
-bash run_remote_pipeline.sh \
+bash run.sh \
   /absolute/path/action.mp4 \
   /absolute/path/character.glb \
   /home/naqi/hackday-character-pipeline/runs/my_run \
