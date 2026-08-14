@@ -1,0 +1,173 @@
+{
+  "input": "/home/naqi/hackday-character-pipeline/motion/gvhmr/tennis/hmr4d_results.pt",
+  "output": "/home/naqi/hackday-character-pipeline/motion/tennis_gvhmr_smpl22.npz",
+  "frames": 312,
+  "fps": 30.0,
+  "duration_seconds": 10.4,
+  "source_height_m": 1.756465,
+  "rotation_shape": [
+    312,
+    22,
+    3,
+    3
+  ],
+  "translation_shape": [
+    312,
+    3
+  ],
+  "translation_range": {
+    "min": [
+      -0.34063801169395447,
+      1.2251739501953125,
+      -0.5625590085983276
+    ],
+    "max": [
+      0.6085929870605469,
+      1.5549390316009521,
+      0.19493399560451508
+    ]
+  },
+  "source_keys": {
+    "smpl_params_global": {
+      "body_pose": [
+        312,
+        63
+      ],
+      "betas": [
+        312,
+        10
+      ],
+      "global_orient": [
+        312,
+        3
+      ],
+      "transl": [
+        312,
+        3
+      ]
+    },
+    "smpl_params_incam": {
+      "body_pose": [
+        312,
+        63
+      ],
+      "betas": [
+        312,
+        10
+      ],
+      "global_orient": [
+        312,
+        3
+      ],
+      "transl": [
+        312,
+        3
+      ]
+    },
+    "K_fullimg": [
+      312,
+      3,
+      3
+    ],
+    "net_outputs": {
+      "model_output": {
+        "pred_context": [
+          1,
+          312,
+          512
+        ],
+        "pred_x": [
+          1,
+          312,
+          151
+        ],
+        "pred_cam": [
+          1,
+          312,
+          3
+        ],
+        "static_conf_logits": [
+          1,
+          312,
+          6
+        ]
+      },
+      "decode_dict": {
+        "body_pose": [
+          1,
+          312,
+          63
+        ],
+        "betas": [
+          1,
+          312,
+          10
+        ],
+        "global_orient": [
+          1,
+          312,
+          3
+        ],
+        "global_orient_gv": [
+          1,
+          312,
+          3
+        ],
+        "local_transl_vel": [
+          1,
+          312,
+          3
+        ]
+      },
+      "pred_smpl_params_incam": {
+        "body_pose": [
+          1,
+          312,
+          63
+        ],
+        "betas": [
+          1,
+          312,
+          10
+        ],
+        "global_orient": [
+          1,
+          312,
+          3
+        ],
+        "transl": [
+          1,
+          312,
+          3
+        ]
+      },
+      "pred_smpl_params_global": {
+        "body_pose": [
+          1,
+          312,
+          63
+        ],
+        "betas": [
+          1,
+          312,
+          10
+        ],
+        "global_orient": [
+          1,
+          312,
+          3
+        ],
+        "transl": [
+          1,
+          312,
+          3
+        ]
+      },
+      "static_conf_logits": [
+        1,
+        312,
+        6
+      ]
+    }
+  }
+}
