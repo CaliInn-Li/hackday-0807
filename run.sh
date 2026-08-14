@@ -155,7 +155,7 @@ if [[ "$START_STAGE" -le 1 ]]; then
     run_step "阶段 ① SkinTokens 绑骨/蒙皮（内含拓扑门禁前采样）" \
         bash -c '
             cd "$1"
-            exec "$2/venv/bin/python" -u "$3/pipeline/scripts/run_skintokens_offline.py" \
+            exec "$2/.venv/bin/python" -u "$3/pipeline/scripts/run_skintokens_offline.py" \
                 --skintokens-home "$1" \
                 --input "$4" \
                 --output "$5/rigging/character_rigged_raw.glb" \
