@@ -16,6 +16,16 @@ DEFAULT_LIMB_LANDMARK_FIT = {
     "arm_section_high_quantile": 0.90,
     "foot_z_max": 0.03,
     "foot_center_exclusion": 0.04,
+    "head_z_min": 0.79,
+    "head_z_max": 0.97,
+    "head_x_half_width": 0.10,
+    "head_front_y_quantile": 0.20,
+    "head_center_z_quantile": 0.40,
+    "head_section_low_quantile": 0.10,
+    "head_section_high_quantile": 0.90,
+    "neck_above_spine2": 0.035,
+    "neck_above_arm_center": 0.055,
+    "head_min_above_neck": 0.060,
     "minimum_samples": 24,
 }
 
@@ -187,3 +197,82 @@ def estimate_foot_centers(points, minimum, maximum, settings=None):
             "sample_count": len(candidates),
         }
     return result
+
+
+def estimate_head_center(points, minimum, maximum, settings=None):
+    """Estimate the skull joint while discounting high-volume hair.
+
+    The front-most central head surface contains face landmarks at stable
+    heights even when hair extends far above or behind the skull. A lower
+    quantile of that surface locates the head rotation center; robust full-head
+    X/Y midpoints keep it inside the volume instead of on the face surface.
+    """
+    config = dict(DEFAULT_LIMB_LANDMARK_FIT)
+    config.update(settings or {})
+    min_x, _, min_z = map(float, minimum)
+    max_x, _, max_z = map(float, maximum)
+    width = max_x - min_x
+    height = max_z - min_z
+    if width <= 1e-8 or height <= 1e-8:
+        raise ValueError("head fitting requires non-degenerate mesh bounds")
+
+    center_x = (min_x + max_x) * 0.5
+    z_min = float(config["head_z_min"])
+    z_max = float(config["head_z_max"])
+    x_radius = width * float(config["head_x_half_width"])
+    front_quantile = float(config["head_front_y_quantile"])
+    center_z_quantile = float(config["head_center_z_quantile"])
+    low_quantile = float(config["head_section_low_quantile"])
+    high_quantile = float(config["head_section_high_quantile"])
+    minimum_samples = int(config["minimum_samples"])
+    if not 0.0 <= z_min < z_max <= 1.0:
+        raise ValueError(f"invalid head Z range: {z_min}..{z_max}")
+    if not 0.0 < float(config["head_x_half_width"]) <= 0.5:
+        raise ValueError("head_x_half_width must be in (0, 0.5]")
+    if not 0.0 < front_quantile <= 1.0:
+        raise ValueError("head_front_y_quantile must be in (0, 1]")
+    if not 0.0 <= center_z_quantile <= 1.0:
+        raise ValueError("head_center_z_quantile must be in [0, 1]")
+    if not 0.0 <= low_quantile < high_quantile <= 1.0:
+        raise ValueError("head section quantiles must be ordered within [0, 1]")
+
+    low_z = min_z + z_min * height
+    high_z = min_z + z_max * height
+    candidates = [
+        point
+        for point in points
+        if abs(float(point[0]) - center_x) <= x_radius
+        and low_z <= float(point[2]) <= high_z
+    ]
+    if len(candidates) < minimum_samples:
+        return {
+            "accepted": False,
+            "sample_count": len(candidates),
+            "reason": f"needs at least {minimum_samples} central head vertices",
+        }
+
+    front_cut = quantile([point[1] for point in candidates], front_quantile)
+    front = [point for point in candidates if float(point[1]) <= front_cut]
+    if len(front) < minimum_samples:
+        return {
+            "accepted": False,
+            "sample_count": len(candidates),
+            "front_sample_count": len(front),
+            "reason": f"needs at least {minimum_samples} front head vertices",
+        }
+
+    def robust_midpoint(axis):
+        values = [point[axis] for point in candidates]
+        return (
+            quantile(values, low_quantile) + quantile(values, high_quantile)
+        ) * 0.5
+
+    return {
+        "accepted": True,
+        "sample_count": len(candidates),
+        "front_sample_count": len(front),
+        "front_y_cut": front_cut,
+        "x": robust_midpoint(0),
+        "y": robust_midpoint(1),
+        "z": quantile([point[2] for point in front], center_z_quantile),
+    }

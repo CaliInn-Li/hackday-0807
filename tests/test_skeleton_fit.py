@@ -9,6 +9,7 @@ from skeleton_fit import (
     estimate_arm_section_center,
     estimate_body_axis,
     estimate_foot_centers,
+    estimate_head_center,
     quantile,
 )
 
@@ -64,6 +65,24 @@ class SkeletonFitTests(unittest.TestCase):
         self.assertTrue(result["accepted"])
         self.assertAlmostEqual(0.60, result["left"]["x"], places=3)
         self.assertAlmostEqual(-0.50, result["right"]["x"], places=3)
+
+    def test_head_center_uses_face_band_instead_of_hair_top(self):
+        points = []
+        for index in range(40):
+            x = (index % 5 - 2) * 0.01
+            # Face/front samples occupy the lower skull band.
+            points.append((x, -0.20, 0.86 + (index % 4) * 0.005))
+            points.append((x, 0.00, 0.88 + (index % 4) * 0.005))
+        # Large hair mass is high and behind the face.
+        points.extend((0.0, 0.10, 0.96) for _ in range(80))
+        result = estimate_head_center(
+            points,
+            minimum=(-1.0, -1.0, 0.0),
+            maximum=(1.0, 1.0, 1.0),
+        )
+        self.assertTrue(result["accepted"])
+        self.assertLess(result["z"], 0.90)
+        self.assertAlmostEqual(0.0, result["x"], places=3)
 
 
 if __name__ == "__main__":

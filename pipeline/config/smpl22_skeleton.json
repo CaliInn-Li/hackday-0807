@@ -16,6 +16,16 @@
       "arm_section_high_quantile": 0.90,
       "foot_z_max": 0.03,
       "foot_center_exclusion": 0.04,
+      "head_z_min": 0.79,
+      "head_z_max": 0.97,
+      "head_x_half_width": 0.10,
+      "head_front_y_quantile": 0.20,
+      "head_center_z_quantile": 0.40,
+      "head_section_low_quantile": 0.10,
+      "head_section_high_quantile": 0.90,
+      "neck_above_spine2": 0.035,
+      "neck_above_arm_center": 0.055,
+      "head_min_above_neck": 0.060,
       "minimum_samples": 24
     }
   },

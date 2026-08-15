@@ -27,6 +27,7 @@ from skeleton_fit import (
     estimate_arm_section_center,
     estimate_body_axis,
     estimate_foot_centers,
+    estimate_head_center,
 )
 
 
@@ -182,6 +183,48 @@ def fit_positions(
             positions[foot_name].y = (
                 body_axis["center_y"] * 0.5 + feet[label]["y"] * 0.5
             )
+
+    head = estimate_head_center(points, minimum, maximum, landmark_settings)
+    landmark_report["head"] = head
+    if head["accepted"]:
+        spine2 = positions["mixamorig:Spine2"]
+        accepted_arm_z = [
+            section["z"]
+            for name, section in landmark_report["arms"].items()
+            if name in ("mixamorig:LeftArm", "mixamorig:RightArm")
+            and section["accepted"]
+        ]
+        neck_z = spine2.z + float(
+            landmark_settings.get("neck_above_spine2", 0.035)
+        ) * height
+        if accepted_arm_z:
+            neck_z = max(
+                neck_z,
+                sum(accepted_arm_z) / len(accepted_arm_z)
+                + float(
+                    landmark_settings.get("neck_above_arm_center", 0.055)
+                )
+                * height,
+            )
+        minimum_head_gap = float(
+            landmark_settings.get("head_min_above_neck", 0.060)
+        ) * height
+        if head["z"] > neck_z + minimum_head_gap:
+            positions["mixamorig:Neck"] = Vector(
+                (
+                    body_axis["center_x"],
+                    spine2.y * 0.5 + head["y"] * 0.5,
+                    neck_z,
+                )
+            )
+            positions["mixamorig:Head"] = Vector(
+                (head["x"], head["y"], head["z"])
+            )
+            head["neck_accepted"] = True
+            head["neck_z"] = float(neck_z)
+        else:
+            head["neck_accepted"] = False
+            head["neck_reason"] = "fitted head does not leave the minimum neck gap"
     bounds_center_y = (minimum.y + maximum.y) * 0.5
     body_axis.update(
         {
