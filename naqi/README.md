@@ -38,12 +38,17 @@ naqi/
 ├─ scripts/                       # 唯一运行入口及必要阶段脚本
 ├─ backend/                       # 可独立迁仓的 FastAPI 资产/任务后端
 ├─ frontend/                      # 可独立迁仓的 React 资产管理工作台
+├─ deploy/                        # 前后端同源网关、一键部署、状态与示例资产登记
 └─ docs/                          # 社区插件/参数解码参考
 ```
 
 `input/videos/action_trim.mp4` 是本次新增视频的输入快照。运行其他视频时仍可直接把外部 MP4 路径传给脚本。`motion/*.npz` 是可复用动作数据契约，不是临时日志。
 
 `scripts/` 保持为技术验证版；服务化实现独立放在 [backend](backend/README.md)，管理界面独立放在 [frontend](frontend/README.md)。同一视频生成的动作和同一角色生成的 rig 都按输入哈希缓存，可自由组合而不重复运行 GVHMR 或 SkinTokens。
+
+需要把前端、后端和 GPU pipeline 作为一套 HTTP 服务交给其他人或 AI 时，从
+[`deploy/README.md`](deploy/README.md) 开始；其中给出了 30 秒架构说明、一键部署、文件职责、
+验收和生产安全边界。
 
 ## 运行环境
 

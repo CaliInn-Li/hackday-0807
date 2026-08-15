@@ -15,6 +15,9 @@ Character + Motion --Blender--> Animation（animated GLB）
 
 ## 给 AI / 自动化代理的最短操作说明
 
+如果目标是同时部署管理前端和后端，而不是只运行 API，请先阅读
+[`../deploy/README.md`](../deploy/README.md)，使用其中的同源 `/api` 网关和一键脚本。
+
 如果你接手的是一台已经装好 SkinTokens、GVHMR、Blender 的 Linux GPU 服务器，
 按下面顺序执行，不要修改仓库根目录的技术验证脚本：
 
