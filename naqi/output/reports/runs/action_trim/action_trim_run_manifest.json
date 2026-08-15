@@ -1,0 +1,95 @@
+{
+  "run_name": "雪帽少女_action_trim",
+  "source_video": {
+    "path": "naqi/input/videos/action_trim.mp4",
+    "sha256": "835F233F435B4BA5B529D871A3F3146610233F61DA45FE9971AA845435645660",
+    "size_bytes": 11414285,
+    "video": {
+      "codec": "h264",
+      "width": 1280,
+      "height": 720,
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "666500/22211",
+      "frames": 1333,
+      "duration_seconds": 44.421967
+    },
+    "audio": {
+      "codec": "aac",
+      "sample_rate_hz": 48000,
+      "channels": 1
+    }
+  },
+  "selected_input": {
+    "path": "naqi/input/videos/action_trim_fixed.mp4",
+    "sha256": "D51ED4ED052ABBC3B9079499F9C5E7252B4F7B86BF3ED507E9E25FA934A539E6",
+    "size_bytes": 3409240,
+    "crop_start_seconds": 8.0,
+    "duration_seconds": 20.0,
+    "video": {
+      "codec": "h264",
+      "width": 1280,
+      "height": 720,
+      "fps": 30.0,
+      "frames": 600,
+      "audio": false
+    },
+    "selection_reason": "The 8-28 second section keeps a stable background and full-body subject; close-up intro/outro and the failed VO interval are excluded."
+  },
+  "camera_mode": "static_cam",
+  "moving_attempt": {
+    "status": "failed_before_core_result",
+    "reason": "GVHMR SimpleVO two-view solver returned no camera solution on the full edited video."
+  },
+  "gpu": {
+    "torch": "2.7.0+cu128",
+    "cuda_available": true,
+    "cuda_version": "12.8",
+    "device": "NVIDIA GeForce RTX 5090 D v2",
+    "gvhmr": "CUDA inference confirmed by GVHMR log and nvidia-smi",
+    "blender_cycles": {
+      "backend": "CUDA",
+      "devices": ["NVIDIA GeForce RTX 5090 D v2"]
+    }
+  },
+  "motion": {
+    "raw_gvhmr_result": "naqi/motion/gvhmr/action_trim/hmr4d_results.pt",
+    "smpl22_npz": "naqi/motion/action_trim_smpl22.npz",
+    "manifest": "naqi/motion/action_trim_motion_manifest.json",
+    "frames": 600,
+    "fps": 30.0,
+    "duration_seconds": 20.0,
+    "rotation_shape": [600, 22, 3, 3],
+    "translation_shape": [600, 3],
+    "source_height_m": 1.408,
+    "translation_range": {
+      "min": [-0.5103579759597778, 1.0708190202713013, -1.713987946510315],
+      "max": [0.03785499930381775, 1.7066570520401, 0.0]
+    }
+  },
+  "retarget": {
+    "character": "naqi/output/rigged/雪帽少女_rigged.glb",
+    "mapping": "naqi/config/snow_girl_topology_mapping.json",
+    "output": "naqi/output/animated/雪帽少女_action_trim_animated.glb",
+    "mapped_bones": 22,
+    "target_height_m": 0.3506851,
+    "translation_scale": 0.2490661,
+    "rotation_transfer": "SMPL-22 local rotations -> SMPL global rotations -> target bind-relative local rotations"
+  },
+  "qa": {
+    "skins": 1,
+    "skin_joint_count": 46,
+    "has_JOINTS_0": true,
+    "has_WEIGHTS_0": true,
+    "animations": 1,
+    "animation_channels": 138,
+    "animation_duration_seconds": 20.0,
+    "rendered_keyframes": [1, 300, 480],
+    "visual_check": "Three rendered keyframes show an intact character with no obvious mesh explosion, whole-body left/right reversal, or root leaving the framed scene."
+  },
+  "limitations": [
+    "The final motion covers the stable 8-28 second crop, not the close-up intro/outro of the 44.42 second source.",
+    "GVHMR SMPL-22 does not provide finger pose; extra finger bones remain unkeyed.",
+    "The basketball and hand-object contact are not part of the exported character animation.",
+    "No character animation MP4 was generated; the animated GLB is the deliverable and PNGs are QA only."
+  ]
+}

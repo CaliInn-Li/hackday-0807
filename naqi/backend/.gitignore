@@ -1,0 +1,14 @@
+.venv/
+.env
+__pycache__/
+.pytest_cache/
+.pytest-tmp/
+*.py[cod]
+*.sqlite3
+*.sqlite3-*
+data/
+runs/
+uploads/
+asset_jobs/
+.uploads/
+.coverage

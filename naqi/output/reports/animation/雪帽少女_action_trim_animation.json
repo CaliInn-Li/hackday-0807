@@ -1,0 +1,24 @@
+{
+  "input": "<REMOTE_HOME_REDACTED>/naqi_demo_action_trim/output/animated/雪帽少女_action_trim_animated.glb",
+  "skins": 1,
+  "skin_joint_counts": [
+    46
+  ],
+  "meshes": 1,
+  "primitive_attributes": [
+    [
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "TEXCOORD_0",
+      "WEIGHTS_0"
+    ]
+  ],
+  "animations": 1,
+  "animation_durations_seconds": [
+    20.0
+  ],
+  "animation_channels": [
+    138
+  ]
+}

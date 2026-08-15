@@ -1,0 +1,51 @@
+{
+  "frames": 600,
+  "fps": 30,
+  "duration_seconds": 20.0,
+  "target_height": 0.3506851,
+  "source_height": 1.4080002,
+  "translation_scale": 0.2490661,
+  "mapped_bones": 22,
+  "target_bone_names": [
+    "bone_0",
+    "bone_38",
+    "bone_42",
+    "bone_1",
+    "bone_39",
+    "bone_43",
+    "bone_2",
+    "bone_40",
+    "bone_44",
+    "bone_3",
+    "bone_41",
+    "bone_45",
+    "bone_4",
+    "bone_6",
+    "bone_22",
+    "bone_5",
+    "bone_7",
+    "bone_23",
+    "bone_8",
+    "bone_24",
+    "bone_9",
+    "bone_25"
+  ],
+  "rotation_transfer": "SMPL-22 local rotations -> SMPL global rotations -> target bind-relative local rotations",
+  "preview_cycles": {
+    "backend": "CUDA",
+    "devices": [
+      "NVIDIA GeForce RTX 5090 D v2"
+    ]
+  },
+  "preview_frames": [
+    1,
+    200,
+    400
+  ],
+  "preview_camera": "follow_root",
+  "character": "<REMOTE_HOME_REDACTED>/naqi_demo_action_trim/input/雪帽少女_rigged.glb",
+  "motion": "<REMOTE_HOME_REDACTED>/naqi_demo_action_trim/motion/action_trim_smpl22.npz",
+  "output": "<REMOTE_HOME_REDACTED>/naqi_demo_action_trim/output/animated/雪帽少女_action_trim_animated.glb",
+  "mapping_json": "<REMOTE_HOME_REDACTED>/naqi_demo_action_trim/config/snow_girl_topology_mapping.json",
+  "mapping_coordinate_note": "x_positive is provisionally SMPL-L and x_negative is provisionally SMPL-R; confirm with a front-view check before production."
+}

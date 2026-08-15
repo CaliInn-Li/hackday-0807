@@ -24,22 +24,26 @@ MP4 + 无骨骼 GLB
 ```text
 naqi/
 ├─ README.md
-├─ input/                         # 原始、无骨骼的角色 GLB
+├─ input/                         # 原始角色 GLB 与示例视频
 │  ├─ 雪帽少女.glb
 │  └─ 冰雪射手.glb
 ├─ output/
 │  ├─ rigged/                     # SkinTokens 生成的骨骼+蒙皮 GLB
-│  ├─ animated/                   # 当前四个最终动画 GLB
+│  ├─ animated/                   # 最终动画 GLB
 │  ├─ reports/topology/           # 骨树分析报告
 │  ├─ reports/retarget/           # 四个动画的重定向报告
 │  └─ preview/                    # video2 的最终关键帧 PNG
 ├─ motion/                        # 可复用的 SMPL-22 动作契约和 manifest
 ├─ config/                        # SMPL-22 契约和示例拓扑映射
 ├─ scripts/                       # 唯一运行入口及必要阶段脚本
+├─ backend/                       # 可独立迁仓的 FastAPI 资产/任务后端
+├─ frontend/                      # 可独立迁仓的 React 资产管理工作台
 └─ docs/                          # 社区插件/参数解码参考
 ```
 
-视频没有复制进这个目录；运行时直接把 MP4 路径传给脚本。`motion/video1_smpl22.npz` 和 `motion/video2_smpl22.npz` 是已经提取好的动作数据契约，不是临时日志。
+`input/videos/action_trim.mp4` 是本次新增视频的输入快照。运行其他视频时仍可直接把外部 MP4 路径传给脚本。`motion/*.npz` 是可复用动作数据契约，不是临时日志。
+
+`scripts/` 保持为技术验证版；服务化实现独立放在 [backend](backend/README.md)，管理界面独立放在 [frontend](frontend/README.md)。同一视频生成的动作和同一角色生成的 rig 都按输入哈希缓存，可自由组合而不重复运行 GVHMR 或 SkinTokens。
 
 ## 运行环境
 
@@ -206,7 +210,22 @@ env PYTHONPATH="$GVHMR_HOME" TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1 \
 - `output/rigged/冰雪射手_rigged.glb`：SkinTokens 生成的 22-joint 骨骼+蒙皮 GLB。
 - `output/animated/雪帽少女_video2_animated.glb`：当前修正后最满意的 video2 结果。
 - `output/animated/雪帽少女_video1_animated.glb`、`冰雪射手_video1_animated.glb`、`冰雪射手_video2_animated.glb`：其余三组最终候选。
+- `motion/action_trim_smpl22.npz`：新视频固定机位中段的 600 帧、30 FPS、20 秒动作。
+- `motion/gvhmr/action_trim/hmr4d_results.pt`：对应的 GVHMR 原始输出。
+- `output/animated/雪帽少女_action_trim_animated.glb`：复用雪帽少女 rig 后生成的新动画 GLB。
 - `output/preview/`：雪帽少女和冰雪射手 video2 的关键帧 PNG。
+
+## 资产管理服务
+
+`backend/` 和 `frontend/` 可分别打包。开发环境默认端口：
+
+```text
+frontend: 5173
+public API: 18080
+admin/health: 127.0.0.1:18081
+```
+
+生产环境只建议对公网开放 `443`，由 Nginx/Caddy 提供 HTTPS、静态前端并转发 API；`18080` 和 `18081` 保持内网/回环监听，尤其不要公网暴露 `18081`。后端提供已绑骨 GLB、动作 NPZ、原/预览 MP4、动画 GLB 和报告的鉴权预览/下载接口。
 
 雪帽少女的额外手指骨会保留在 GLB 中，但当前 GVHMR 输出是 SMPL-22，不包含手指姿态；弓箭等道具也不会自动获得独立动作。新角色如果没有清晰的躯干、双臂和双腿链，自动映射应停在报告阶段，人工确认映射后再重定向。
 

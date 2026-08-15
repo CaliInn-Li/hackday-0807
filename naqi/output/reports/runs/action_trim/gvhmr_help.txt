@@ -1,0 +1,16 @@
+usage: demo.py [-h] [--video VIDEO] [--output_root OUTPUT_ROOT] [-s]
+               [--use_dpvo] [--f_mm F_MM] [--verbose]
+
+options:
+  -h, --help            show this help message and exit
+  --video VIDEO
+  --output_root OUTPUT_ROOT
+                        by default to outputs/demo
+  -s, --static_cam      If true, skip DPVO
+  --use_dpvo            If true, use DPVO. By default not using DPVO.
+  --f_mm F_MM           Focal length of fullframe camera in mm. Leave it as
+                        None to use default values.For iPhone 15p, the [0.5x,
+                        1x, 2x, 3x] lens have typical values [13, 24, 48,
+                        77].If the camera zoom in a lot, you can try 135, 200
+                        or even larger values.
+  --verbose             If true, draw intermediate results
