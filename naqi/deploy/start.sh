@@ -9,6 +9,17 @@ STATE_DIR=${NAQI_SERVICE_STATE_DIR:-"$DEPLOY_DIR/.runtime"}
 LOG_DIR=${NAQI_SERVICE_LOG_DIR:-"$STATE_DIR/logs"}
 GATEWAY_PORT=${NAQI_GATEWAY_PORT:-18000}
 
+if [[ -n "${NAQI_NODE_BIN:-}" ]]; then
+  NODE_COMMAND=("$NAQI_NODE_BIN")
+elif command -v node >/dev/null 2>&1; then
+  NODE_COMMAND=(node)
+elif [[ -x "$HOME/toolchains/mise/mise" ]]; then
+  NODE_COMMAND=("$HOME/toolchains/mise/mise" exec node@22 -- node)
+else
+  echo "Node is missing; restore persistent mise/Node 22 first." >&2
+  exit 1
+fi
+
 mkdir -p "$STATE_DIR" "$LOG_DIR"
 
 pid_is_running() {
@@ -56,7 +67,7 @@ if ! pid_is_running "$STATE_DIR/gateway.pid"; then
     NAQI_GATEWAY_STATIC_ROOT="$STATIC_ROOT" \
     NAQI_GATEWAY_PORT="$GATEWAY_PORT" \
     NAQI_GATEWAY_API_PORT="$PUBLIC_PORT" \
-    node "$DEPLOY_DIR/http_gateway.mjs" > "$LOG_DIR/gateway.log" 2>&1 </dev/null &
+    "${NODE_COMMAND[@]}" "$DEPLOY_DIR/http_gateway.mjs" > "$LOG_DIR/gateway.log" 2>&1 </dev/null &
   echo $! > "$STATE_DIR/gateway.pid"
 fi
 

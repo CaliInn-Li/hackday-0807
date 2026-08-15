@@ -1,0 +1,4 @@
+*.tar.gz
+*.tar.zst
+*.sha256
+!README.md

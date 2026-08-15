@@ -50,6 +50,9 @@ naqi/
 [`deploy/README.md`](deploy/README.md) 开始；其中给出了 30 秒架构说明、一键部署、文件职责、
 验收和生产安全边界。
 
+DevBox 持久盘、在线备份、Python/模型环境保全和系统重建恢复见
+[`ops/devbox-recovery/README.md`](ops/devbox-recovery/README.md)。
+
 ## 运行环境
 
 脚本假设远程 GPU 机器已经准备好：

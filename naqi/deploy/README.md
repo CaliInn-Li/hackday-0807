@@ -39,6 +39,10 @@ backend admin API :18081 仅绑定 127.0.0.1，不经过公网网关
 要求：Linux、Python 3.11、Node.js 20+、npm，以及已经准备好的 SkinTokens、GVHMR、
 Blender。GPU 模型目录不会随本仓库下载。
 
+在 DevBox 上建议通过 mise 将 Node 安装到 `/home`。`start.sh` 找不到系统 Node 时，会自动
+尝试 `$HOME/toolchains/mise/mise exec node@22 -- node`，避免依赖会随重建消失的
+`/usr/bin/node`。
+
 ```bash
 cd naqi/backend
 cp .env.example .env

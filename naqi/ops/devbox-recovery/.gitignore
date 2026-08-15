@@ -1,0 +1,4 @@
+__pycache__/
+*.tar.gz
+*.tar.zst
+local-backups/
