@@ -109,6 +109,9 @@ curl http://127.0.0.1:18081/health/ready
 `blender_bin` 和 `asset_execution_backend` 均为 `true`。下载还应验证 GLB、NPZ、MP4 的
 Range 请求返回 `206 Partial Content`。
 
+后端会在 `runs/` 中保留 `.naqi-root` 哨兵文件，因为 SeaweedFS 等对象存储挂载不会保留
+空目录；它不是任务产物，不要当作垃圾文件清理。
+
 ## 安全和生产边界
 
 - `NAQI_DEV_MODE=1` 只用于临时内网体验，此模式 public 写接口没有 API key。

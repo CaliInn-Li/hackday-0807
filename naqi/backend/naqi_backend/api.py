@@ -56,6 +56,10 @@ class BackendRuntime:
                 return
             self.settings.data_root.mkdir(parents=True, exist_ok=True)
             self.settings.runs_dir.mkdir(parents=True, exist_ok=True)
+            # Object-backed filesystems such as SeaweedFS may discard empty
+            # directories. Keep a harmless sentinel so readiness remains
+            # stable before the first job creates its own run directory.
+            (self.settings.runs_dir / ".naqi-root").touch(exist_ok=True)
             self.database.initialize()
             self.asset_database.initialize()
             self.database.mark_running_interrupted()

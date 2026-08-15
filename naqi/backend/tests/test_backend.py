@@ -447,6 +447,7 @@ def test_restart_recovery_and_health(tmp_path: Path) -> None:
     )
     runtime = BackendRuntime(config, FakeRunner())
     runtime.start()
+    assert (config.runs_dir / ".naqi-root").is_file()
     recovered = runtime.database.get(job_dir.name)
     assert recovered is not None
     assert recovered.status == "failed"
