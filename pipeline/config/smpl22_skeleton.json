@@ -1,0 +1,36 @@
+{
+  "contract": "smpl22-mixamo-v1",
+  "description": "Fixed SMPL-22 body contract using stable Mixamo-style target names. +X is character-left, +Y is back, +Z is up after Blender imports glTF.",
+  "fit": {
+    "body_axis": {
+      "z_min": 0.55,
+      "z_max": 0.90,
+      "x_half_width": 0.18,
+      "front_weighted_y_quantile": 0.40
+    }
+  },
+  "joints": [
+    {"name": "mixamorig:Hips", "smpl22_index": 0, "parent": null, "position": [0.0, 0.0, 0.52]},
+    {"name": "mixamorig:Spine", "smpl22_index": 3, "parent": "mixamorig:Hips", "position": [0.0, 0.0, 0.60]},
+    {"name": "mixamorig:Spine1", "smpl22_index": 6, "parent": "mixamorig:Spine", "position": [0.0, 0.0, 0.68]},
+    {"name": "mixamorig:Spine2", "smpl22_index": 9, "parent": "mixamorig:Spine1", "position": [0.0, 0.0, 0.77]},
+    {"name": "mixamorig:Neck", "smpl22_index": 12, "parent": "mixamorig:Spine2", "position": [0.0, 0.0, 0.86]},
+    {"name": "mixamorig:Head", "smpl22_index": 15, "parent": "mixamorig:Neck", "position": [0.0, 0.0, 0.94]},
+    {"name": "mixamorig:LeftShoulder", "smpl22_index": 13, "parent": "mixamorig:Spine2", "position": [0.09, 0.0, 0.80]},
+    {"name": "mixamorig:LeftArm", "smpl22_index": 16, "parent": "mixamorig:LeftShoulder", "position": [0.18, 0.0, 0.78]},
+    {"name": "mixamorig:LeftForeArm", "smpl22_index": 18, "parent": "mixamorig:LeftArm", "position": [0.31, 0.0, 0.74]},
+    {"name": "mixamorig:LeftHand", "smpl22_index": 20, "parent": "mixamorig:LeftForeArm", "position": [0.43, 0.0, 0.70]},
+    {"name": "mixamorig:RightShoulder", "smpl22_index": 14, "parent": "mixamorig:Spine2", "position": [-0.09, 0.0, 0.80]},
+    {"name": "mixamorig:RightArm", "smpl22_index": 17, "parent": "mixamorig:RightShoulder", "position": [-0.18, 0.0, 0.78]},
+    {"name": "mixamorig:RightForeArm", "smpl22_index": 19, "parent": "mixamorig:RightArm", "position": [-0.31, 0.0, 0.74]},
+    {"name": "mixamorig:RightHand", "smpl22_index": 21, "parent": "mixamorig:RightForeArm", "position": [-0.43, 0.0, 0.70]},
+    {"name": "mixamorig:LeftUpLeg", "smpl22_index": 1, "parent": "mixamorig:Hips", "position": [0.07, 0.0, 0.49]},
+    {"name": "mixamorig:LeftLeg", "smpl22_index": 4, "parent": "mixamorig:LeftUpLeg", "position": [0.075, 0.0, 0.29]},
+    {"name": "mixamorig:LeftFoot", "smpl22_index": 7, "parent": "mixamorig:LeftLeg", "position": [0.075, -0.01, 0.08]},
+    {"name": "mixamorig:LeftToeBase", "smpl22_index": 10, "parent": "mixamorig:LeftFoot", "position": [0.075, -0.08, 0.035]},
+    {"name": "mixamorig:RightUpLeg", "smpl22_index": 2, "parent": "mixamorig:Hips", "position": [-0.07, 0.0, 0.49]},
+    {"name": "mixamorig:RightLeg", "smpl22_index": 5, "parent": "mixamorig:RightUpLeg", "position": [-0.075, 0.0, 0.29]},
+    {"name": "mixamorig:RightFoot", "smpl22_index": 8, "parent": "mixamorig:RightLeg", "position": [-0.075, -0.01, 0.08]},
+    {"name": "mixamorig:RightToeBase", "smpl22_index": 11, "parent": "mixamorig:RightFoot", "position": [-0.075, -0.08, 0.035]}
+  ]
+}

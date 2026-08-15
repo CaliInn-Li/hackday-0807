@@ -7,11 +7,26 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from rig_contract import (
+    CONTRACT_NAME,
+    PREFERRED_TAIL_CHILD,
+    SMPL22_TARGET_PARENTS,
+    match_to_reference,
+)
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
-    parser.add_argument("--mapping", required=True)
+    parser.add_argument(
+        "--reference-skeleton",
+        required=True,
+        help="Stage-1A semantic SMPL-22 skeleton used to identify generated joint names.",
+    )
     parser.add_argument("--clean-output", required=True)
     parser.add_argument("--animated-output", required=True)
     parser.add_argument("--render-dir", required=True)
@@ -24,17 +39,9 @@ def parse_args():
 # Skeleton topology gate
 # ---------------------------------------------------------------------------
 #
-# SkinTokens is an autoregressive rigging generator. Unlike Make-It-Animatable
-# or Mixamo, its output topology is NOT guaranteed to be a standard 22-bone
-# humanoid: bone count, chain depth, and left/right ordering all vary between
-# samples. Blindly renaming bone_0..bone_21 to mixamorig:* therefore silently
-# produces a broken rig (limbs mislabeled, 8-segment legs, duplicated arm
-# chains, finger chains, left/right swapped).
-#
-# This analyzer derives the *geometric* topology from each bone's head/tail
-# positions and parent links, then checks it against the expected humanoid
-# structure. It rejects non-humanoid samples *before* any renaming, so a bad
-# rig never propagates downstream into the GVHMR retarget stage.
+# Stage 1 supplies a fixed SMPL-22 skeleton and asks SkinTokens to generate
+# weights only. This stage proves that SkinTokens preserved the exact graph and
+# joint geometry before any semantic rename or animation is allowed.
 #
 # Coordinate convention observed in SkinTokens output: Z up, X left/right,
 # Y depth (tail of a directional chain descends in +Y for legs).
@@ -222,46 +229,91 @@ def classify_chains(armature):
     return {"bone_count": len(bones), "problems": problems}, problems
 
 
-def validate_humanoid(armature, diagnostic_path=None):
-    """Run the topology gate. Return a diagnostic dict. Raise RuntimeError with
-    a readable summary if the skeleton is not a standard 22-bone humanoid."""
-    report = describe_topology(armature)
-    _, problems = classify_chains(armature)
+def validate_semantic_geometry(armature, raw_to_semantic):
+    semantic_to_actual = {semantic: actual for actual, semantic in raw_to_semantic.items()}
+    bones = {
+        semantic: armature.data.bones[actual]
+        for semantic, actual in semantic_to_actual.items()
+    }
+    hips = bones["mixamorig:Hips"].head_local
+    head = bones["mixamorig:Head"].head_local
+    height = max(abs(head.z - hips.z), 1e-6)
+    tolerance = height * 0.01
+    problems = []
+    if head.z <= hips.z + tolerance:
+        problems.append("Head must be above Hips in Blender Z-up coordinates")
+    for suffix in ("Shoulder", "Arm", "ForeArm", "Hand", "UpLeg", "Leg", "Foot", "ToeBase"):
+        left = bones[f"mixamorig:Left{suffix}"].head_local
+        right = bones[f"mixamorig:Right{suffix}"].head_local
+        if left.x <= hips.x + tolerance:
+            problems.append(f"Left{suffix} must lie on the +X side of Hips")
+        if right.x >= hips.x - tolerance:
+            problems.append(f"Right{suffix} must lie on the -X side of Hips")
+    for side in ("Left", "Right"):
+        if bones[f"mixamorig:{side}Foot"].head_local.z >= hips.z:
+            problems.append(f"{side}Foot must be below Hips")
+    return problems
 
-    # Structural checks independent of naming.
+
+def validate_humanoid(armature, reference_positions, diagnostic_path=None):
+    """Prove the generated armature still satisfies the fixed SMPL-22 contract."""
+    report = describe_topology(armature)
+    chain_report, chain_problems = classify_chains(armature)
+    bone_names = [bone.name for bone in armature.data.bones]
+    parent_by_name = {
+        bone.name: bone.parent.name if bone.parent else None
+        for bone in armature.data.bones
+    }
+    effective_mapping, metrics, contract_problems = match_to_reference(
+        bone_names,
+        parent_by_name,
+        {bone.name: list(map(float, bone.head_local)) for bone in armature.data.bones},
+        reference_positions,
+    )
+    problems = list(chain_problems) + list(contract_problems)
+    if effective_mapping and set(effective_mapping) == set(bone_names):
+        problems.extend(validate_semantic_geometry(armature, effective_mapping))
     if report["bone_count"] != 22:
         problems.append(
-            f"bone count {report['bone_count']} != 22; "
-            "SkinTokens produced a non-standard skeleton. Re-run the sampling "
-            "(--use-transfer) until it yields a 22-bone humanoid, or fix the "
-            "topology before semantic renaming."
+            f"bone count {report['bone_count']} != 22; SkinTokens did not preserve "
+            "the fixed --use-skeleton input"
         )
     if report["root_count"] != 1:
-        problems.append(
-            f"root count {report['root_count']} != 1; expected a single pelvis root."
-        )
+        problems.append(f"root count {report['root_count']} != 1")
+
+    semantic_parents = {}
+    if effective_mapping:
+        for name, semantic in effective_mapping.items():
+            parent = parent_by_name[name]
+            semantic_parents[semantic] = None if parent is None else effective_mapping[parent]
+        for semantic, expected_parent in SMPL22_TARGET_PARENTS.items():
+            if semantic_parents.get(semantic) != expected_parent:
+                problems.append(
+                    f"{semantic} parent must be {expected_parent!r}, "
+                    f"found {semantic_parents.get(semantic)!r}"
+                )
 
     diagnostic = {
         "armature": armature.name,
+        "contract": CONTRACT_NAME,
+        "generated_to_semantic": effective_mapping,
+        "reference_match": metrics,
+        "semantic_parents": semantic_parents,
         "topology": report,
+        "chain_analysis": chain_report,
         "problems": sorted(set(problems)),
-        "is_valid_humanoid": len(problems) == 0,
+        "is_valid_humanoid": not problems,
     }
-
     if diagnostic_path:
         path = Path(diagnostic_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(diagnostic, ensure_ascii=False, indent=2), encoding="utf-8")
-
     if problems:
-        summary = "\n".join(f"  - {p}" for p in sorted(set(problems)))
+        summary = "\n".join(f"  - {problem}" for problem in sorted(set(problems)))
         raise RuntimeError(
-            "Skeleton is not a standard 22-bone humanoid; refusing to apply "
-            "semantic mapping. Diagnostics:\n" + summary +
-            ("\nFull report written to: " + str(diagnostic_path) if diagnostic_path else "")
+            f"Skeleton violates fixed {CONTRACT_NAME}; refusing to continue:\n{summary}"
         )
-
-    return diagnostic
+    return diagnostic, effective_mapping
 
 
 def reset_scene():
@@ -270,6 +322,30 @@ def reset_scene():
     for datablocks in (bpy.data.actions, bpy.data.cameras, bpy.data.lights):
         for datablock in list(datablocks):
             datablocks.remove(datablock)
+
+
+def load_reference_skeleton(path):
+    reset_scene()
+    bpy.ops.import_scene.gltf(filepath=str(Path(path).resolve()))
+    armatures = [obj for obj in bpy.context.scene.objects if obj.type == "ARMATURE"]
+    if len(armatures) != 1:
+        raise RuntimeError(
+            f"Reference SMPL-22 GLB must contain one armature, found {len(armatures)}"
+        )
+    armature = armatures[0]
+    names = set(armature.data.bones.keys())
+    if names != set(SMPL22_TARGET_PARENTS):
+        raise RuntimeError("Reference GLB does not contain the semantic SMPL-22 target names")
+    parents = {
+        bone.name: bone.parent.name if bone.parent else None
+        for bone in armature.data.bones
+    }
+    if parents != SMPL22_TARGET_PARENTS:
+        raise RuntimeError("Reference GLB parent graph violates the SMPL-22 contract")
+    return {
+        bone.name: [float(value) for value in bone.head_local]
+        for bone in armature.data.bones
+    }
 
 
 def import_character(path):
@@ -298,12 +374,17 @@ def import_character(path):
 
 
 def rename_skeleton(armature, meshes, mapping):
-    missing = sorted(set(mapping) - set(armature.data.bones.keys()))
-    if missing:
-        raise RuntimeError(f"Mapping references missing bones: {missing}")
-
-    for old_name, new_name in mapping.items():
-        armature.data.bones[old_name].name = new_name
+    actual = set(armature.data.bones.keys())
+    if actual == set(mapping.values()):
+        pass
+    elif actual != set(mapping):
+        raise RuntimeError(
+            "Armature names match neither the generated names nor semantic SMPL-22 names"
+        )
+    else:
+        # Renaming deform bones also renames their matching vertex groups.
+        for old_name, new_name in mapping.items():
+            armature.data.bones[old_name].name = new_name
 
     expected = set(mapping.values())
     actual = set(armature.data.bones.keys())
@@ -314,6 +395,133 @@ def rename_skeleton(armature, meshes, mapping):
         mesh.data.name = "CharacterMesh"
     armature.name = "CharacterRig"
     armature.data.name = "CharacterRig"
+
+
+def repair_bone_tails(armature):
+    """Repair SkinTokens leaf tails and make target rest axes deterministic."""
+    bpy.ops.object.select_all(action="DESELECT")
+    armature.select_set(True)
+    bpy.context.view_layer.objects.active = armature
+    bpy.ops.object.mode_set(mode="EDIT")
+    bones = armature.data.edit_bones
+    body_height = max(
+        bones["mixamorig:Head"].head.z - bones["mixamorig:Hips"].head.z,
+        1e-5,
+    )
+    for name, parent in SMPL22_TARGET_PARENTS.items():
+        bone = bones[name]
+        child = PREFERRED_TAIL_CHILD.get(name)
+        if child:
+            bone.tail = bones[child].head
+        elif parent:
+            direction = bone.head - bones[parent].head
+            if direction.length < body_height * 1e-4:
+                direction = Vector((0, 0, 1))
+            bone.tail = bone.head + direction.normalized() * max(body_height * 0.04, 1e-5)
+        bone.roll = 0.0
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def validate_skin_weights(armature, meshes):
+    expected = set(SMPL22_TARGET_PARENTS)
+    influenced_bones = set()
+    problems = []
+    world_vertices = [
+        (mesh, vertex, mesh.matrix_world @ vertex.co)
+        for mesh in meshes
+        for vertex in mesh.data.vertices
+    ]
+    minimum = Vector(tuple(min(item[2][axis] for item in world_vertices) for axis in range(3)))
+    maximum = Vector(tuple(max(item[2][axis] for item in world_vertices) for axis in range(3)))
+    height = max(maximum.z - minimum.z, 1e-6)
+    weighted_sums = {name: Vector((0, 0, 0)) for name in expected}
+    weight_totals = {name: 0.0 for name in expected}
+    summary = {"meshes": [], "influenced_bones": [], "joint_weight_fit": {}}
+    for mesh in meshes:
+        group_names = {group.index: group.name for group in mesh.vertex_groups}
+        unexpected = sorted(set(group_names.values()) - expected)
+        if unexpected:
+            problems.append(f"mesh {mesh.name} has unexpected vertex groups: {unexpected}")
+        unweighted = 0
+        max_influences = 0
+        invalid_sum = 0
+        for vertex in mesh.data.vertices:
+            positive = [entry for entry in vertex.groups if entry.weight > 1e-8]
+            total = sum(entry.weight for entry in positive)
+            if not positive:
+                unweighted += 1
+                continue
+            max_influences = max(max_influences, len(positive))
+            if len(positive) > 4:
+                problems.append(
+                    f"mesh {mesh.name} vertex {vertex.index} has {len(positive)} influences; max is 4"
+                )
+                break
+            if abs(total - 1.0) > 1e-3:
+                invalid_sum += 1
+            world_position = mesh.matrix_world @ vertex.co
+            for entry in positive:
+                name = group_names[entry.group]
+                influenced_bones.add(name)
+                if name in weighted_sums:
+                    weighted_sums[name] += world_position * entry.weight
+                    weight_totals[name] += entry.weight
+        if unweighted:
+            problems.append(f"mesh {mesh.name} has {unweighted} unweighted vertices")
+        if invalid_sum:
+            problems.append(f"mesh {mesh.name} has {invalid_sum} non-normalized vertices")
+        summary["meshes"].append(
+            {
+                "name": mesh.name,
+                "vertices": len(mesh.data.vertices),
+                "unweighted_vertices": unweighted,
+                "max_influences": max_influences,
+                "invalid_weight_sums": invalid_sum,
+            }
+        )
+    missing = sorted(expected - influenced_bones)
+    if missing:
+        problems.append(f"semantic bones with no positive skin influence: {missing}")
+    summary["influenced_bones"] = sorted(influenced_bones)
+
+    margin = height * 0.08
+    centroids = {}
+    for name in sorted(expected):
+        if weight_totals[name] <= 1e-8:
+            continue
+        centroid = weighted_sums[name] / weight_totals[name]
+        centroids[name] = centroid
+        head = armature.matrix_world @ armature.data.bones[name].head_local
+        normalized_distance = (centroid - head).length / height
+        inside_expanded_bounds = all(
+            minimum[axis] - margin <= head[axis] <= maximum[axis] + margin
+            for axis in range(3)
+        )
+        summary["joint_weight_fit"][name] = {
+            "bone_head": [round(float(value), 7) for value in head],
+            "weighted_centroid": [round(float(value), 7) for value in centroid],
+            "normalized_distance": round(float(normalized_distance), 6),
+            "inside_expanded_mesh_bounds": inside_expanded_bounds,
+        }
+        if not inside_expanded_bounds:
+            problems.append(f"{name} head lies outside the mesh bounds")
+        if normalized_distance > 0.35:
+            problems.append(
+                f"{name} is too far from its weighted vertices: {normalized_distance:.3f} body heights"
+            )
+
+    hips_x = (armature.matrix_world @ armature.data.bones["mixamorig:Hips"].head_local).x
+    side_tolerance = height * 0.01
+    for suffix in ("Shoulder", "Arm", "ForeArm", "Hand", "UpLeg", "Leg", "Foot", "ToeBase"):
+        left_name = f"mixamorig:Left{suffix}"
+        right_name = f"mixamorig:Right{suffix}"
+        if left_name in centroids and centroids[left_name].x <= hips_x - side_tolerance:
+            problems.append(f"{left_name} weights are not on the +X character-left side")
+        if right_name in centroids and centroids[right_name].x >= hips_x + side_tolerance:
+            problems.append(f"{right_name} weights are not on the -X character-right side")
+    if problems:
+        raise RuntimeError("Skin weight contract failed:\n  - " + "\n  - ".join(problems))
+    return summary
 
 
 def detach_skinned_mesh_roots(meshes):
@@ -470,16 +678,23 @@ def render_views(render_dir, camera, center, radius):
 
 def main():
     args = parse_args()
-    mapping = json.loads(Path(args.mapping).read_text(encoding="utf-8"))
+    reference_positions = load_reference_skeleton(args.reference_skeleton)
     reset_scene()
     armature, meshes = import_character(args.input)
 
-    # Topology gate: refuse to rename if the rig is not a standard 22-bone
-    # humanoid. A bad SkinTokens sample would otherwise be silently mislabeled
-    # and corrupt every downstream retarget stage.
-    validate_humanoid(armature, diagnostic_path=args.diagnostic)
-
-    rename_skeleton(armature, meshes, mapping)
+    diagnostic, effective_mapping = validate_humanoid(
+        armature,
+        reference_positions=reference_positions,
+        diagnostic_path=args.diagnostic,
+    )
+    rename_skeleton(armature, meshes, effective_mapping)
+    repair_bone_tails(armature)
+    weight_report = validate_skin_weights(armature, meshes)
+    diagnostic["skin_weights"] = weight_report
+    if args.diagnostic:
+        Path(args.diagnostic).write_text(
+            json.dumps(diagnostic, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
     detach_skinned_mesh_roots(meshes)
     export_glb(args.clean_output, armature, meshes, animations=False)
     create_test_action(armature)
@@ -489,8 +704,10 @@ def main():
     print(
         json.dumps(
             {
+                "contract": CONTRACT_NAME,
                 "bones": len(armature.data.bones),
                 "meshes": len(meshes),
+                "skin_weights": weight_report,
                 "clean_output": str(Path(args.clean_output).resolve()),
                 "animated_output": str(Path(args.animated_output).resolve()),
                 "render_dir": str(Path(args.render_dir).resolve()),

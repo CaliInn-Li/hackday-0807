@@ -1,6 +1,6 @@
 # 原始 Lux3D GLB 到动画 GLB：完整闭环运行手册
 
-> 实际落地链路：Lux3D 静态 GLB → SkinTokens 自动绑骨/蒙皮 → 22 骨语义化与蒙皮验收 → GVHMR 从视频提取人体动作 → SMPL-22 可移植中间格式 → Blender 坐标转换、骨轴重定向、根位移缩放与逐帧烘焙 → 可在游戏引擎播放的动画 GLB。
+> 当前生产链路：Lux3D 静态 GLB → 拟合固定 SMPL-22 骨架 → SkinTokens 基于既有骨架只生成蒙皮 → 固定契约验收 → GVHMR 动作 → 绑定姿态感知的全局重定向 → 动画 GLB。`naqi/` 是独立复现包，不属于本手册描述的主管线。
 
 本文不是概念方案，而是本项目在一台无法联网的远程 RTX 5090 机器上实际执行、调试和验收后沉淀的复现手册。文中的命令、目录、数据结构和故障处理均来自本次 `冰雪射手.glb + GVHMR tennis.mp4` 的完整闭环。
 
@@ -15,9 +15,11 @@
 ```text
 原始 Lux3D GLB
   ↓
-SkinTokens 预测 22 骨骨架与每顶点权重
-  ↓ --use-transfer 保留原始 Lux3D 网格、尺寸和 PBR 材质
-Blender 清理、语义化骨骼、压力测试
+拟合并嵌入固定 smpl22-mixamo-v1 骨架
+  ↓
+SkinTokens --use-skeleton --use-transfer 只预测每顶点权重
+  ↓
+固定22骨父子图、左右语义、骨骼/权重空间关系和压力测试
   ↓
 视频输入 GVHMR
   ↓
@@ -25,7 +27,7 @@ SMPL-X/SMPL-22 每帧局部旋转 + 全局根位移
   ↓
 统一 NPZ 动作中间格式
   ↓
-Blender Y-up→Z-up、骨轴共轭、身高比例缩放、关键帧烘焙
+Blender Y-up→Z-up、SMPL局部转全局、目标绑定姿态转换、身高缩放、关键帧烘焙
   ↓
 动画 GLB
 ```
@@ -62,13 +64,14 @@ Blender Y-up→Z-up、骨轴共轭、身高比例缩放、关键帧烘焙
 
 ```mermaid
 flowchart LR
-    A["静态 GLB<br/>外观 + PBR 材质"] --> B["① SkinTokens 自动绑骨/蒙皮<br/>22骨 + 每顶点权重<br/>--use-transfer 保留原网格尺寸"]
-    B --> C["② Blender 清理 + 语义化<br/>bone_0..21 → mixamorig:*"]
+    A["静态 GLB<br/>外观 + PBR 材质"] --> B0["①A Blender 拟合固定 SMPL-22<br/>稳定拓扑 + 稳定语义"]
+    B0 --> B["①B SkinTokens 仅预测蒙皮<br/>--use-skeleton + --use-transfer"]
+    B --> C["② Blender 契约校验<br/>拓扑 + 几何 + 权重空间门禁"]
 
     V["视频 MP4"] --> D["③ GVHMR 单目动捕<br/>SMPL-X 参数"]
     D --> E["④ 标准化为 SMPL-22 NPZ<br/>便携动作文件"]
 
-    C --> F["⑤ Blender 重定向烘焙<br/>Y-up→Z-up · 骨轴共轭 · 身高缩放"]
+    C --> F["⑤ Blender 重定向烘焙<br/>全局旋转转换 · bind basis · 身高缩放"]
     E --> F
     F --> G["最终 character_*.glb<br/>含 GVHMR_Action 动画"]
 ```
@@ -77,13 +80,14 @@ flowchart LR
 
 | 阶段 | 作用 | 脚本 |
 | --- | --- | --- |
-| ① 绑骨/蒙皮 | 给静态网格生成 22 骨骨架与每顶点权重；`--use-transfer` 把权重转回原始 Lux3D 网格，保留尺寸与 PBR 材质 | `run_skintokens_offline.py` |
-| ② 清理/语义化 | 删除调试物体，`bone_0..21` 重命名为 Mixamo 风格语义名；生成压力测试动画验证蒙皮 | `prepare_and_test_rig.py`（配 `inspect_rig.py` 验收） |
+| ①A 固定骨架 | 把版本化 `smpl22-mixamo-v1` 模板拟合到角色并嵌入 GLB，骨骼数量、父子关系、语义名均固定 | `create_fixed_smpl22_skeleton.py` + `smpl22_skeleton.json` |
+| ①B 自动蒙皮 | 使用 `--use-skeleton --use-transfer` 保留输入骨架与原始网格，仅让 SkinTokens 预测每顶点权重 | `run_skintokens_offline.py` |
+| ② 清理/验收 | 按阶段①A参考骨架的拓扑和归一化几何恢复语义，校验 22 骨契约、权重数量/归一化/空间位置，并生成压力测试动画 | `prepare_and_test_rig.py`（配 `inspect_rig.py` 验收） |
 | ③ 动作提取 | GVHMR 从单人视频恢复 SMPL-X 参数（body_pose/global_orient/transl/betas） | 直接调用 GVHMR `demo.py` |
 | ④ 动作标准化 | 把 GVHMR 结果转成不依赖 GVHMR/Blender 的可移植 SMPL-22 NPZ（兼容压平轴角/四元数/旋转矩阵） | `extract_gvhmr_motion.py` |
 | ⑤ 重定向/烘焙 | 跨坐标系、跨骨轴、跨身高重定向 SMPL-22 动作，逐帧烘焙为 `GVHMR_Action` | `apply_gvhmr_motion.py` |
 
-核心设计：把「角色外观」「标准骨架+蒙皮」「与外观无关的动作数据(NPZ)」三类中间资产解耦——同一角色可换多套动作，同一段动作也能重定向给不同角色。GPU 推理（①②③④）在远程离线机器完成，Demo 只读预生成资产。
+核心设计：把「角色外观」「标准骨架+蒙皮」「与外观无关的动作数据(NPZ)」三类中间资产解耦——同一角色可换多套动作，同一段动作也能重定向给不同角色。SkinTokens 与 GVHMR 的 GPU 推理在远程离线机器完成；固定骨架拟合、契约验收和动作烘焙由 Blender 完成；Demo 只读预生成资产。
 
 三条职责边界：
 
@@ -219,8 +223,12 @@ hackday-0807/
 └── pipeline/
     ├── README.md
     ├── config/
-    │   └── skintokens_mixamo_mapping.json
+    │   └── smpl22_skeleton.json
     ├── scripts/
+    │   ├── create_fixed_smpl22_skeleton.py
+    │   ├── rig_contract.py
+    │   ├── skeleton_fit.py
+    │   ├── retarget_math.py
     │   ├── run_skintokens_offline.py
     │   ├── inspect_rig.py
     │   ├── prepare_and_test_rig.py
@@ -352,11 +360,11 @@ bash run.sh --check
 
 ---
 
-## 8. 阶段一：SkinTokens 自动绑骨与蒙皮
+## 8. 阶段一：固定 SMPL-22 骨架与 SkinTokens 自动蒙皮
 
 ### 8.1 目标
 
-将只有静态网格的 Lux3D GLB 转为包含以下内容的 GLB：
+先将版本化 SMPL-22 模板拟合到静态 Lux3D GLB，再让 SkinTokens 仅预测蒙皮权重，产出包含以下内容的 GLB：
 
 - Armature / Skeleton。
 - 22 根人体骨骼。
@@ -365,7 +373,7 @@ bash run.sh --check
 - inverse bind matrices。
 - 原始 PBR 材质与贴图。
 
-### 8.2 为什么必须使用 `--use-transfer`
+### 8.2 为什么必须同时使用 `--use-skeleton --use-transfer`
 
 SkinTokens 默认直接导出内部归一化网格。本次实测：
 
@@ -374,10 +382,11 @@ SkinTokens 默认直接导出内部归一化网格。本次实测：
 | 默认导出 | 三角角点展开为约 179,898 顶点，人物归一化到约 2 米，文件约 8.64 MB | 适合模型内部结果查看，不适合直接替换原 Lux3D 资产 |
 | `--use-transfer` | 权重转回原始 Lux3D 网格，保留约 0.26 高度、PBR 材质与紧凑拓扑，文件约 5.79 MB | 本项目生产选择 |
 
-所以流水线固定启用：
+`--use-transfer` 只解决“权重回传到原网格”，不保证骨架拓扑稳定。生产流水线还必须用
+`--use-skeleton` 保留阶段①A提供的固定 SMPL-22 骨架。因此固定启用：
 
 ```text
---use-transfer
+--use-skeleton --use-transfer
 ```
 
 ### 8.3 离线冷启动包装器
@@ -402,8 +411,9 @@ pipeline/scripts/run_skintokens_offline.py
 1. 将 SkinTokens 根目录加入 `sys.path`。
 2. 复用原项目 `start_bpy_server()`。
 3. 默认等待最多 600 秒（可用 `--server-timeout` 覆盖），并每 10 秒输出进度；子进程提前退出时立即报告退出码。
-4. 复用原项目 `run_cli()`。
-5. 默认使用原模型检查点和生成参数。
+4. 在 GPU 推理前检查输入 GLB 只有一个名为 `Armature` 的 skin 且恰好包含 22 个 joint。
+5. 固定 Python、NumPy 和 PyTorch 随机种子，并把 `use_skeleton/use_transfer` 记录到日志。
+6. 复用原项目 `run_cli()` 和原模型检查点，不修改 SkinTokens 仓库。
 
 独立运行命令：
 
@@ -413,11 +423,16 @@ cd /home/naqi/SkinTokens
 .venv/bin/python -u \
   /home/naqi/hackday-character-pipeline/pipeline/scripts/run_skintokens_offline.py \
   --skintokens-home /home/naqi/SkinTokens \
-  --input /home/naqi/hackday-character-pipeline/inputs/character.glb \
+  --input /home/naqi/hackday-character-pipeline/runs/manual_test/rigging/character_skeleton_input.glb \
   --output /home/naqi/hackday-character-pipeline/rigging/character_rigged_raw.glb \
   --server-timeout 600 \
+  --seed 0 \
+  --use-skeleton \
   --use-transfer
 ```
+
+这里的输入必须由 `create_fixed_smpl22_skeleton.py` 生成；不能直接把无骨架的原始角色传给
+`--use-skeleton`。
 
 ### 8.4 实测耗时
 
@@ -439,13 +454,13 @@ Loading model: ...grpo_1400.ckpt
 
 ## 9. 阶段二：骨骼检查、清理和语义化
 
-SkinTokens 输出的骨骼名称是：
+不同版本的 SkinTokens 或 glTF 导入器可能保留语义名，也可能把 joint 重命名为：
 
 ```text
 bone_0 ... bone_21
 ```
 
-名字没有语义，不能直接与 SMPL、Mixamo 或游戏逻辑建立稳定映射。因此需要根据稳定的骨架拓扑赋予语义名。
+因此阶段②从不相信输出名称或编号，而是用阶段①A的参考骨架，通过完整父子图与归一化关节几何恢复语义。
 
 ### 9.1 先验收再重命名
 
@@ -455,12 +470,12 @@ bone_0 ... bone_21
 pipeline/scripts/inspect_rig.py
 ```
 
-> 说明：`inspect_rig.py` 是独立的验收工具，并不在一键脚本的五个阶段内被调用；它用于在改造前人工审查 SkinTokens 的原始绑定输出。`run.sh` 开头的静态环境自检（`--check`）会要求它存在，但流水线五阶段本身只跑 `prepare_and_test_rig.py`。
+> 说明：`inspect_rig.py` 是独立的人工审查工具，并不在一键脚本的五个阶段或 `run.sh --check` 中调用；生产门禁由 `prepare_and_test_rig.py` 完成。
 
 执行：
 
 ```bash
-/usr/local/bin/blender --background \
+/usr/local/bin/blender --background --python-exit-code 1 \
   --python /home/naqi/hackday-character-pipeline/pipeline/scripts/inspect_rig.py -- \
   --input /path/character_rigged_raw.glb \
   --output /path/character_rig_summary.json
@@ -477,7 +492,7 @@ pipeline/scripts/inspect_rig.py
 - 每顶点 1/2/3/4 骨影响的分布。
 - 每个骨组影响的顶点数量和权重和。
 
-本次 `--use-transfer` 结果满足：
+旧版自由生成模式的一次历史结果为：
 
 ```text
 armature_count = 1
@@ -488,15 +503,19 @@ unweighted_vertex_count = 0
 每顶点最多 4 根骨骼
 ```
 
-### 9.2 完整 22 骨映射
+这些编号只用于回溯旧产物，不构成当前生产契约。
+
+### 9.2 固定 SMPL-22 契约
 
 配置文件：
 
 ```text
-pipeline/config/skintokens_mixamo_mapping.json
+pipeline/config/smpl22_skeleton.json
 ```
 
-SkinTokens、目标语义骨和 SMPL-22 的完整对应关系：
+该配置固定22个身体关节、父子图、目标语义名、SMPL-22索引和标准化绑定位置，契约名为
+`smpl22-mixamo-v1`。Mixamo风格名称只是游戏侧稳定名称；SkinTokens/glTF生成的 `bone_N`
+不被视为语义契约。下表中的第一列仅说明旧版一次采样的编号，不再参与主管线映射：
 
 | SkinTokens | 目标语义名 | SMPL-22 索引 | SMPL 关节 |
 |---|---:|---|
@@ -523,19 +542,24 @@ SkinTokens、目标语义骨和 SMPL-22 的完整对应关系：
 | `bone_20` | `mixamorig:RightFoot` | 8 | right_ankle |
 | `bone_21` | `mixamorig:RightToeBase` | 11 | right_foot |
 
-### 9.3 拓扑门禁（改名前的强制校验）
+### 9.3 固定契约门禁
 
-> ⚠️ 重要：SkinTokens 是自回归自由拓扑生成器，**每次采样输出的骨数和拓扑都不固定**。它不保证像 Mixamo 那样输出标准 22 骨 humanoid。曾有一次采样产出 45 根骨（7 段脊椎、每条腿 8 段、两套手臂、手指独立成链），而旧版脚本只按 `bone_0..bone_21` 的位置硬编码重命名，导致多余骨静默残留、左右错位，骨架完全错误。
+> SkinTokens 默认会自由生成拓扑；当前主管线先拟合固定骨架，再使用
+> `--use-skeleton --use-transfer`，使 SkinTokens 只预测该骨架的蒙皮权重。
 
-因此 `prepare_and_test_rig.py` 现在在**重命名之前**加入强制「拓扑门禁」：基于每根骨的头尾坐标与父子关系做几何分析，只有同时满足以下条件才允许继续：
+`prepare_and_test_rig.py` 以阶段①A语义骨架为参考，通过完整父子树和归一化关节坐标反推
+生成joint名称，并强制验证：
 
-- 骨总数 == 22；
-- 根骨数量 == 1；
-- 每条腿/臂的末端肢体段数 ≤ 4（分叉点之后计数，不误伤 6 段躯干链）。
+- 22个SMPL身体关节完整且唯一，父子图完全一致；
+- 左侧位于角色 +X，右侧位于 -X；
+- 每个顶点有1–4个权重且权重和为1；
+- 每根语义骨都有正权重影响；
+- 骨头在扩展网格包围盒内，并靠近其加权顶点中心。
 
-不满足时，脚本会**直接抛错并停止**，打印清晰诊断（例如 `bone count 45 != 22`、`leg terminal_depth 8`），并把完整拓扑报告写到 `--diagnostic` 指定的 JSON 文件。这样坏采样不会静默导出 GLB 污染下游的 GVHMR 重定向。
+不满足时脚本会直接停止，并把完整契约、映射、拓扑和权重空间报告写入 `--diagnostic`。
 
-**遇到门禁报错的正确处置**：回到阶段①重新跑 SkinTokens 采样（`--use-transfer`），直到产出标准 22 骨 humanoid——坏骨架是采样本身的问题，无法靠调整映射救回，不要试图手工删骨。
+**遇到门禁报错的正确处置**：检查 `character_skeleton_fit.json`、
+`logs/00_fixed_skeleton.log` 和 `logs/01_skintokens.log` 中的 `use_skeleton=true`；不能随机重采样或恢复固定 `bone_N` 映射。
 
 ### 9.4 清理和压力测试
 
@@ -548,10 +572,10 @@ pipeline/scripts/prepare_and_test_rig.py
 独立执行：
 
 ```bash
-/usr/local/bin/blender --background \
+/usr/local/bin/blender --background --python-exit-code 1 \
   --python /home/naqi/hackday-character-pipeline/pipeline/scripts/prepare_and_test_rig.py -- \
   --input /path/character_rigged_raw.glb \
-  --mapping /home/naqi/hackday-character-pipeline/pipeline/config/skintokens_mixamo_mapping.json \
+  --reference-skeleton /path/character_skeleton_input.glb \
   --clean-output /path/character_rigged_clean.glb \
   --animated-output /path/character_rig_test.glb \
   --render-dir /path/renders/rig_test \
@@ -560,10 +584,10 @@ pipeline/scripts/prepare_and_test_rig.py
 
 脚本做了六件事：
 
-1. **拓扑门禁**：几何校验骨架是否为标准 22 骨 humanoid，不符则报错并把诊断写到 `--diagnostic` 指定文件。
+1. **固定契约门禁**：匹配并校验固定 SMPL-22 父子图、空间语义和蒙皮权重。
 2. 只保留真正绑定到 Armature 的 Mesh。
 3. 删除 SkinTokens 导出的额外 `Icosphere` 调试物体。
-4. 将 `bone_0 ... bone_21` 改为 Mixamo 风格语义名。
+4. 根据参考骨架动态识别生成joint，再改为稳定的 Mixamo 风格目标名。
 5. 解除 skinned mesh 对 Armature 节点的普通父子关系，同时保留 Armature Modifier，消除 glTF 的 `NODE_SKINNED_MESH_NON_ROOT` 警告。
 6. 生成 `RigStressTest` 动画，旋转手臂、前臂、大腿、小腿和胸椎，渲染前/后/左/三分之四视图。
 
@@ -811,7 +835,7 @@ pipeline/scripts/apply_gvhmr_motion.py
 命令：
 
 ```bash
-/usr/local/bin/blender --background \
+/usr/local/bin/blender --background --python-exit-code 1 \
   --python /home/naqi/hackday-character-pipeline/pipeline/scripts/apply_gvhmr_motion.py -- \
   --character /path/character_rigged_clean.glb \
   --motion /path/action_smpl22.npz \
@@ -881,25 +905,29 @@ R_blender = C · R_smpl · C⁻¹
 C⁻¹ = Cᵀ
 ```
 
-### 12.2 静态骨轴共轭
+### 12.2 SMPL 全局旋转与目标绑定姿态
 
-SMPL 关节旋转表达在 SMPL 的局部关节坐标中；SkinTokens/Blender 每根骨骼的静态局部轴不相同。如果直接赋值，手臂可能绕错误轴旋转。
-
-对目标骨骼，先计算它相对父骨的静态局部旋转：
-
-```text
-R_rest_local = inverse(parent.matrix_local) · bone.matrix_local
-```
-
-根骨使用自身 `matrix_local`。
-
-然后将已经转换到 Blender 模型空间的源旋转共轭到目标骨本地轴：
+SMPL `body_pose` 是相对父关节的局部旋转。旧版直接逐骨套到目标局部轴，会重复或遗漏父骨影响，
+典型症状是手臂横置、肩胯错位。当前实现先按 SMPL-22 父子树累积全局旋转：
 
 ```text
-R_basis = R_rest_local⁻¹ · R_blender · R_rest_local
+R_source_global[j] = R_source_global[parent(j)] · R_source_local[j]
 ```
 
-再把 `R_basis` 转成四元数，写入：
+再进行 Y-up → Z-up 转换，并乘目标骨全局绑定姿态：
+
+```text
+R_desired_global[j] = C · R_source_global[j] · Cᵀ · R_target_rest_global[j]
+```
+
+根据目标父骨的期望全局旋转还原局部旋转：
+
+```text
+R_desired_local[j] = inverse(R_desired_global[parent(j)]) · R_desired_global[j]
+R_basis[j] = inverse(R_target_rest_local[j]) · R_desired_local[j]
+```
+
+最后把 `R_basis` 转成四元数写入：
 
 ```python
 pose_bone.rotation_mode = "QUATERNION"
@@ -907,7 +935,7 @@ pose_bone.rotation_quaternion = R_basis.to_quaternion()
 pose_bone.keyframe_insert(data_path="rotation_quaternion", frame=frame)
 ```
 
-这是动作能正确落在 SkinTokens 任意静态骨轴上的关键。
+这保证SMPL父子运动和固定目标骨架的绑定轴都只计算一次。
 
 ### 12.3 根位移比例
 
@@ -1128,16 +1156,26 @@ CHARACTER=$WORK/inputs/character.glb
 mkdir -p "$RUN"/{rigging,motion,renders,logs}
 ```
 
-### 14.2 SkinTokens
+### 14.2 固定骨架拟合 + SkinTokens 仅蒙皮
 
 ```bash
+/usr/local/bin/blender --background --python-exit-code 1 \
+  --python "$WORK/pipeline/scripts/create_fixed_smpl22_skeleton.py" -- \
+  --input "$CHARACTER" \
+  --template "$WORK/pipeline/config/smpl22_skeleton.json" \
+  --output "$RUN/rigging/character_skeleton_input.glb" \
+  --report "$RUN/rigging/character_skeleton_fit.json" \
+  2>&1 | tee "$RUN/logs/00_fixed_skeleton.log"
+
 cd /home/naqi/SkinTokens
 
 .venv/bin/python -u "$WORK/pipeline/scripts/run_skintokens_offline.py" \
   --skintokens-home /home/naqi/SkinTokens \
-  --input "$CHARACTER" \
+  --input "$RUN/rigging/character_skeleton_input.glb" \
   --output "$RUN/rigging/character_rigged_raw.glb" \
   --server-timeout 600 \
+  --seed 0 \
+  --use-skeleton \
   --use-transfer \
   2>&1 | tee "$RUN/logs/01_skintokens.log"
 ```
@@ -1145,10 +1183,10 @@ cd /home/naqi/SkinTokens
 ### 14.3 骨骼清理与测试
 
 ```bash
-/usr/local/bin/blender --background \
+/usr/local/bin/blender --background --python-exit-code 1 \
   --python "$WORK/pipeline/scripts/prepare_and_test_rig.py" -- \
   --input "$RUN/rigging/character_rigged_raw.glb" \
-  --mapping "$WORK/pipeline/config/skintokens_mixamo_mapping.json" \
+  --reference-skeleton "$RUN/rigging/character_skeleton_input.glb" \
   --clean-output "$RUN/rigging/character_rigged_clean.glb" \
   --animated-output "$RUN/rigging/character_rig_test.glb" \
   --render-dir "$RUN/renders/rig_test" \
@@ -1202,7 +1240,7 @@ env PYTHONPATH=/home/naqi/GVHMR \
 ### 14.6 Blender 重定向
 
 ```bash
-/usr/local/bin/blender --background \
+/usr/local/bin/blender --background --python-exit-code 1 \
   --python "$WORK/pipeline/scripts/apply_gvhmr_motion.py" -- \
   --character "$RUN/rigging/character_rigged_clean.glb" \
   --motion "$RUN/motion/${VIDEO_STEM}_smpl22.npz" \
@@ -1228,11 +1266,12 @@ env PYTHONPATH=/home/naqi/GVHMR \
 ### 15.2 绑骨门禁
 
 - 1 个 Armature。
-- 22 根人体骨。
-- 只有一个根骨 `bone_0`。
-- 22 个对应 vertex group。
+- 22 根 `smpl22-mixamo-v1` 语义骨，父子图与配置完全一致。
+- 只有一个根骨 `mixamorig:Hips`。
+- 22 个对应语义 vertex group，每根骨都有正权重影响。
 - 0 个未加权顶点。
 - 每顶点最多 4 个正权重。
+- 关节位于扩展网格包围盒内，并接近其加权顶点中心；左右权重分区正确。
 - 压力测试中手臂、腿、躯干均能变形。
 - 原材质和纹理仍在。
 
@@ -1296,7 +1335,8 @@ Get-FileHash `
 | 根位移放大约 7.7 倍 | 角色移出镜头 | Blender 导入绑定空间包围盒误报 2 米 | 从 GLB POSITION accessor 读取真实 0.26 高度 |
 | glTF Validator 警告 | `NODE_SKINNED_MESH_NON_ROOT` | skinned mesh 同时作为 Armature 普通子节点 | 导出前解除普通 parent，保留 Armature Modifier |
 | GVHMR 最后退出失败 | 找不到 `ffmpeg` | 仅横向拼接需要 CLI | 以 `hmr4d_results.pt` 是否存在判断核心成功 |
-| 阶段② 绑定骨骼错乱 | 骨架飞到身体外、手脚位置完全不对 | SkinTokens 某次采样产出 45 骨（7 段脊椎、每条腿 8 段、两套手臂），旧版按 `bone_0..21` 硬编码重命名导致多余骨残留、左右错位 | 在 `prepare_and_test_rig.py` 改名**前**加入「拓扑门禁」：几何校验 22 骨/单根/肢体段数≤4，不符即报错并写诊断 JSON；坏采样回阶段①重新采样 |
+| 阶段② 绑定骨骼错乱 | 骨架飞到身体外、手脚位置完全不对 | 让 SkinTokens 自由生成骨架后再按 `bone_0..21` 猜语义，采样拓扑与编号不稳定 | 阶段①A 先按 `smpl22_skeleton.json` 拟合固定 22 骨，阶段①B 使用 `--use-skeleton --use-transfer` 只预测蒙皮；阶段②按参考骨架的拓扑与几何匹配并做权重空间门禁，不再依赖临时编号 |
+| 动作局部关节正确但整体肢体方向错误 | 手臂、腿部随父骨旋转后发生二次偏转 | 把 SMPL 局部旋转逐关节直接共轭到目标骨架，忽略了父级累计旋转和目标 bind basis | 先沿 SMPL-22 父链累计为全局旋转，再做坐标系转换，最后用目标骨架全局 bind basis 还原目标局部旋转 |
 
 这些兼容逻辑都已经固化在一键脚本或 Python 脚本中，不需要每次手工修改第三方仓库。
 

@@ -9,31 +9,17 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
-TARGET_TO_SMPL22 = {
-    "mixamorig:Hips": 0,
-    "mixamorig:Spine": 3,
-    "mixamorig:Spine1": 6,
-    "mixamorig:Spine2": 9,
-    "mixamorig:Neck": 12,
-    "mixamorig:Head": 15,
-    "mixamorig:LeftShoulder": 13,
-    "mixamorig:LeftArm": 16,
-    "mixamorig:LeftForeArm": 18,
-    "mixamorig:LeftHand": 20,
-    "mixamorig:RightShoulder": 14,
-    "mixamorig:RightArm": 17,
-    "mixamorig:RightForeArm": 19,
-    "mixamorig:RightHand": 21,
-    "mixamorig:LeftUpLeg": 1,
-    "mixamorig:LeftLeg": 4,
-    "mixamorig:LeftFoot": 7,
-    "mixamorig:LeftToeBase": 10,
-    "mixamorig:RightUpLeg": 2,
-    "mixamorig:RightLeg": 5,
-    "mixamorig:RightFoot": 8,
-    "mixamorig:RightToeBase": 11,
-}
+from rig_contract import (
+    CONTRACT_NAME,
+    SMPL22_PARENTS,
+    SMPL22_TARGET_PARENTS,
+    TARGET_TO_SMPL22,
+)
+from retarget_math import accumulate_global_rotations
 
 
 def parse_args():
@@ -87,6 +73,18 @@ def load_character(path):
     missing = sorted(set(TARGET_TO_SMPL22) - set(armature.pose.bones.keys()))
     if missing:
         raise RuntimeError(f"Character is missing mapped bones: {missing}")
+    parent_problems = []
+    for name, expected_parent in SMPL22_TARGET_PARENTS.items():
+        bone = armature.data.bones[name]
+        actual_parent = bone.parent.name if bone.parent else None
+        if actual_parent != expected_parent:
+            parent_problems.append(
+                f"{name}: expected parent {expected_parent!r}, got {actual_parent!r}"
+            )
+    if parent_problems:
+        raise RuntimeError(
+            f"Character violates {CONTRACT_NAME}:\n  - " + "\n  - ".join(parent_problems)
+        )
     return armature, meshes, glb_visual_height(path)
 
 
@@ -96,6 +94,10 @@ def local_rest_rotation(bone):
     else:
         local = bone.matrix_local
     return local.to_3x3().normalized()
+
+
+def global_rest_rotation(armature, bone):
+    return armature.matrix_world.to_3x3() @ bone.matrix_local.to_3x3().normalized()
 
 
 def mesh_points(meshes, visual_height):
@@ -127,23 +129,56 @@ def key_motion(armature, meshes, visual_height, motion, step):
     armature["source_fps"] = source_fps
     armature["translation_scale"] = scale
 
-    # GVHMR/SMPL-X: X right, Y up, Z forward. Blender: X right, Y back, Z up.
+    # GVHMR/SMPL-X: +X character-left, +Y up, +Z forward.
+    # The fitted Blender rig faces -Y: +X character-left, +Y back, +Z up.
     coordinate = np.asarray(((1.0, 0.0, 0.0), (0.0, 0.0, -1.0), (0.0, 1.0, 0.0)))
     coordinate_inv = coordinate.T
-    rest_rotations = {
-        name: local_rest_rotation(armature.data.bones[name]) for name in TARGET_TO_SMPL22
+    if rotations.ndim != 4 or rotations.shape[1:] != (22, 3, 3):
+        raise RuntimeError(f"Expected rotations[T,22,3,3], got {rotations.shape}")
+
+    # GVHMR exports SMPL joint-local rotations. Accumulate them before
+    # comparing them with target global bind axes; otherwise parent motion is
+    # applied in an incompatible local frame and limbs drift away from the mesh.
+    source_global_rotations = accumulate_global_rotations(rotations, SMPL22_PARENTS)
+
+    target_bones = {
+        name: armature.data.bones[name] for name in TARGET_TO_SMPL22
     }
+    rest_globals = {
+        name: global_rest_rotation(armature, bone)
+        for name, bone in target_bones.items()
+    }
+    rest_locals = {}
+    for name, bone in target_bones.items():
+        parent_name = bone.parent.name if bone.parent else None
+        parent_rest = (
+            rest_globals[parent_name]
+            if parent_name in rest_globals
+            else Matrix.Identity(3)
+        )
+        rest_locals[name] = parent_rest.inverted() @ rest_globals[name]
 
     root = armature.pose.bones["mixamorig:Hips"]
-    root_rest = armature.data.bones["mixamorig:Hips"].matrix_local.to_3x3().normalized()
+    root_rest = rest_globals["mixamorig:Hips"]
     translation_zero = translations[0].copy()
 
     for frame_index, (frame_rotations, translation) in enumerate(zip(rotations, translations), start=1):
+        frame_source_global = source_global_rotations[frame_index - 1]
+        desired_globals = {}
         for target_name, source_index in TARGET_TO_SMPL22.items():
-            source_rotation = frame_rotations[source_index]
-            blender_rotation = coordinate @ source_rotation @ coordinate_inv
-            rest = rest_rotations[target_name]
-            basis = rest.inverted() @ Matrix(blender_rotation.tolist()) @ rest
+            source_global = coordinate @ frame_source_global[source_index] @ coordinate_inv
+            desired_globals[target_name] = Matrix(source_global.tolist()) @ rest_globals[target_name]
+
+        for target_name in TARGET_TO_SMPL22:
+            target_bone = target_bones[target_name]
+            parent_name = target_bone.parent.name if target_bone.parent else None
+            parent_desired = (
+                desired_globals[parent_name]
+                if parent_name in desired_globals
+                else Matrix.Identity(3)
+            )
+            desired_local = parent_desired.inverted() @ desired_globals[target_name]
+            basis = rest_locals[target_name].inverted() @ desired_local
             pose_bone = armature.pose.bones[target_name]
             pose_bone.rotation_mode = "QUATERNION"
             pose_bone.rotation_quaternion = basis.to_quaternion().normalized()
@@ -163,6 +198,10 @@ def key_motion(armature, meshes, visual_height, motion, step):
         "source_height": round(source_height, 7),
         "translation_scale": round(scale, 7),
         "mapped_bones": len(TARGET_TO_SMPL22),
+        "contract": CONTRACT_NAME,
+        "rotation_transfer": (
+            "SMPL-22 local -> SMPL global -> target global bind -> target local basis"
+        ),
     }
 
 

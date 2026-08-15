@@ -3,8 +3,8 @@
 # run.sh — 五个阶段一键运行脚本
 #
 # 阶段划分（对应 pipeline/五阶段独立运行与产物说明.md）：
-#   ① bind      : SkinTokens 绑骨/蒙皮           (run_skintokens_offline.py)
-#   ② rig       : Blender 清理 + 语义化骨骼      (prepare_and_test_rig.py)
+#   ① bind      : 固定 SMPL-22 模板 + SkinTokens 蒙皮
+#   ② rig       : 固定契约验收 + 语义化 + 压力测试
 #   ③ motion    : GVHMR 单目动捕                 (GVHMR tools/demo/demo.py)
 #   ④ motionnpz : 动作标准化为 SMPL-22 NPZ       (extract_gvhmr_motion.py)
 #   ⑤ retarget  : Blender 重定向/烘焙            (apply_gvhmr_motion.py)
@@ -22,9 +22,8 @@
 #   * 每步执行前会打印提示；任一步失败立即中止整个脚本，不再继续后续阶段。
 #   * --stage 与 --skip 可组合使用：先按 --stage 截断起点，再按 --skip 跳过其中若干阶段。
 #   * 被跳过的阶段假定其产物已存在，请自行确认（如阶段③跳过后沿用已有 hmr4d_results.pt）。
-#   * 第②步含「拓扑门禁」：若产出 skeletons 为非标准 22 骨 humanoid，
-#     脚本会识别报错关键词并给出明确提示，指向 "logs/02_topology_diagnostic.json"，
-#     必须回第①步重新采样（--use-transfer），不能靠改映射救回。
+#   * 第①步使用 SkinTokens --use-skeleton，只生成蒙皮，不自由生成骨架。
+#   * 第②步按参考骨架证明骨数、父子图、左右语义和蒙皮均符合固定契约。
 #
 set -euo pipefail
 
@@ -39,6 +38,9 @@ CHARACTER="${PIPELINE_CHARACTER:-$WORK/inputs/character.glb}"
 SKINTOKENS_HOME="${SKINTOKENS_HOME:-/home/naqi/SkinTokens}"
 GVHMR_HOME="${GVHMR_HOME:-/home/naqi/GVHMR}"
 BLENDER="${BLENDER_BIN:-/usr/local/bin/blender}"
+SKINTOKENS_SEED="${SKINTOKENS_SEED:-0}"
+SKINTOKENS_USE_POSTPROCESS="${SKINTOKENS_USE_POSTPROCESS:-0}"
+PIPELINE_BODY_CENTER_Y="${PIPELINE_BODY_CENTER_Y:-}"
 
 START_STAGE="${START_STAGE:-1}"
 SKIP_STAGES="${SKIP_STAGES:-}"   # 逗号分隔的阶段号，如 "3,4"
@@ -57,6 +59,10 @@ LOG3="$LOG_DIR/03_gvhmr.log"
 LOG4="$LOG_DIR/04_extract_motion.log"
 LOG5="$LOG_DIR/05_retarget.log"
 DIAG_JSON="$LOG_DIR/02_topology_diagnostic.json"
+SKELETON_TEMPLATE="$WORK/pipeline/config/smpl22_skeleton.json"
+SKELETON_INPUT="$RUN/rigging/character_skeleton_input.glb"
+SKELETON_REPORT="$RUN/rigging/character_skeleton_fit.json"
+LOG0="$LOG_DIR/00_fixed_skeleton.log"
 
 # ---------------------------------------------------------------------------
 # 工具函数
@@ -64,6 +70,34 @@ DIAG_JSON="$LOG_DIR/02_topology_diagnostic.json"
 log()   { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 ok()    { printf '\033[1;32m[OK] %s\033[0m\n' "$*"; }
 fail()  { printf '\033[1;31m[FAIL] %s\033[0m\n' "$*" >&2; }
+
+check_environment() {
+    local failed=0
+    local required=(
+        "$SKINTOKENS_HOME/.venv/bin/python"
+        "$GVHMR_HOME/.venv310/bin/python"
+        "$GVHMR_HOME/tools/demo/demo.py"
+        "$BLENDER"
+        "$WORK/pipeline/config/smpl22_skeleton.json"
+        "$WORK/pipeline/scripts/create_fixed_smpl22_skeleton.py"
+        "$WORK/pipeline/scripts/run_skintokens_offline.py"
+        "$WORK/pipeline/scripts/prepare_and_test_rig.py"
+        "$WORK/pipeline/scripts/apply_gvhmr_motion.py"
+    )
+    for path in "${required[@]}"; do
+        if [[ -e "$path" ]]; then
+            echo "[OK] $path"
+        else
+            echo "[MISSING] $path" >&2
+            failed=1
+        fi
+    done
+    if [[ "$failed" -ne 0 ]]; then
+        fail "Environment check failed"
+        return 1
+    fi
+    echo "Environment check passed."
+}
 
 # 阶段是否在 --skip 列表中
 #   should_skip <阶段号>  → 命中返回 0(true)，否则 1(false)
@@ -91,17 +125,17 @@ topology_hint() {
     cat >&2 <<'EOF'
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  [拓扑门禁失败] 第②步产出 skeletons 不是标准的 22 骨 humanoid !
+  [固定契约失败] 第②步产出不符合 smpl22-mixamo-v1 !
 
   请查看诊断报告：
       LOG_DIR/02_topology_diagnostic.json
 
-  常见原因：SkinTokens 采样出了非标准骨架（骨数 != 22、单根、肢体段数 > 4）。
+  常见原因：固定骨架输入没有被保留、关节图被重排后无法匹配，或蒙皮权重不完整。
 
   处理办法：
-    1) 回第①步重新运行 SkinTokens 采样（务必带 --use-transfer 保留原网格尺寸），
-       直到得到 22 骨 humanoid；
-    2) 或先修复网格拓扑，再进行语义化骨骼重命名。
+    1) 检查 logs/00_fixed_skeleton.log 与 rigging/character_skeleton_fit.json；
+    2) 确认 logs/01_skintokens.log 中 use_skeleton/use_transfer 都为 true；
+    3) 不要通过修改 bone_N 固定映射或随机重采样绕过契约门禁。
 
   ⚠️ 不要靠修改骨骼映射来“救回”坏采样——几何不匹配时语义映射不可靠。
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -118,15 +152,18 @@ show_help() {
 选项：
   --stage <1-5>        从指定阶段开始运行（默认 1），用于断点续跑
   --skip <a,b,...>     跳过指定阶段（1-5，逗号分隔，如 3,4），用于复用已有产物
+  --check              检查固定骨架管线与外部依赖路径
   -h, --help           显示帮助
 
 所有路径均可用环境变量覆盖：PIPELINE_WORK / PIPELINE_RUN / PIPELINE_VIDEO /
 PIPELINE_CHARACTER / SKINTOKENS_HOME / GVHMR_HOME / BLENDER_BIN。
+可选：SKINTOKENS_SEED、SKINTOKENS_USE_POSTPROCESS=1、PIPELINE_BODY_CENTER_Y。
 EOF
 }
 
 START_STAGE_ARG=""
 SKIP_STAGES_ARG=""
+CHECK_ONLY=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --stage)
@@ -144,6 +181,10 @@ while [[ $# -gt 0 ]]; do
             fi
             SKIP_STAGES_ARG="$2"
             shift 2
+            ;;
+        --check)
+            CHECK_ONLY=1
+            shift
             ;;
         -h|--help)
             show_help
@@ -163,6 +204,11 @@ if [[ -n "$START_STAGE_ARG" ]]; then
         exit 2
     fi
     START_STAGE="$START_STAGE_ARG"
+fi
+
+if [[ "$CHECK_ONLY" == "1" ]]; then
+    check_environment
+    exit 0
 fi
 
 if [[ -n "$SKIP_STAGES_ARG" ]]; then
@@ -197,19 +243,43 @@ echo "  起始阶段  = $START_STAGE"
 mkdir -p "$RUN/rigging" "$RUN/motion" "$RUN/renders" "$LOG_DIR"
 
 # ---------------------------------------------------------------------------
-# 阶段 ① SkinTokens 绑骨/蒙皮
+# 阶段 ① 固定 SMPL-22 + SkinTokens 仅蒙皮
 # ---------------------------------------------------------------------------
 if [[ "$START_STAGE" -le 1 ]] && ! should_skip 1; then
-    run_step "阶段 ① SkinTokens 绑骨/蒙皮（内含拓扑门禁前采样）" \
+    run_step "阶段 ①A 拟合并嵌入固定 SMPL-22 骨架" \
         bash -c '
+            set -o pipefail
+            extra=()
+            if [[ -n "$7" ]]; then extra+=(--body-center-y "$7"); fi
+            "$1" --background --python-exit-code 1 \
+                --python "$2/pipeline/scripts/create_fixed_smpl22_skeleton.py" -- \
+                --input "$3" \
+                --template "$4" \
+                --output "$5" \
+                --report "$6" \
+                "${extra[@]}" \
+                2>&1 | tee "$8"
+        ' _ "$BLENDER" "$WORK" "$CHARACTER" "$SKELETON_TEMPLATE" \
+            "$SKELETON_INPUT" "$SKELETON_REPORT" "$PIPELINE_BODY_CENTER_Y" "$LOG0"
+    ok "阶段①A完成：$SKELETON_INPUT"
+
+    run_step "阶段 ①B SkinTokens 固定骨架蒙皮（只生成权重）" \
+        bash -c '
+            set -o pipefail
+            extra=()
+            if [[ "$7" == "1" ]]; then extra+=(--use-postprocess); fi
             cd "$1"
             exec "$2/.venv/bin/python" -u "$3/pipeline/scripts/run_skintokens_offline.py" \
                 --skintokens-home "$1" \
                 --input "$4" \
                 --output "$5/rigging/character_rigged_raw.glb" \
+                --seed "$6" \
+                --use-skeleton \
                 --use-transfer \
+                "${extra[@]}" \
                 2>&1 | tee "$5/logs/01_skintokens.log"
-        ' _ "$SKINTOKENS_HOME" "$SKINTOKENS_HOME" "$WORK" "$CHARACTER" "$RUN"
+        ' _ "$SKINTOKENS_HOME" "$SKINTOKENS_HOME" "$WORK" "$SKELETON_INPUT" "$RUN" \
+            "$SKINTOKENS_SEED" "$SKINTOKENS_USE_POSTPROCESS"
     ok "阶段①完成：$RUN/rigging/character_rigged_raw.glb"
 else
     log "跳过阶段①（沿用已有产物）"
@@ -219,25 +289,26 @@ fi
 # 阶段 ② 清理/语义化（含压力测试 + 拓扑门禁）
 # ---------------------------------------------------------------------------
 if [[ "$START_STAGE" -le 2 ]] && ! should_skip 2; then
-    run_step "阶段 ② Blender 清理 + 语义化骨骼（含拓扑门禁，非标准 22 骨会中止）" \
+    if ! run_step "阶段 ② 固定 SMPL-22 契约验收 + 语义化 + 压力测试" \
         bash -c '
-            "$1" --background \
+            set -o pipefail
+            "$1" --background --python-exit-code 1 \
                 --python "$2/pipeline/scripts/prepare_and_test_rig.py" -- \
                 --input "$3/rigging/character_rigged_raw.glb" \
-                --mapping "$2/pipeline/config/skintokens_mixamo_mapping.json" \
+                --reference-skeleton "$3/rigging/character_skeleton_input.glb" \
                 --clean-output "$3/rigging/character_rigged_clean.glb" \
                 --animated-output "$3/rigging/character_rig_test.glb" \
                 --render-dir "$3/renders/rig_test" \
                 --diagnostic "$3/logs/02_topology_diagnostic.json" \
                 2>&1 | tee "$3/logs/02_prepare_rig.log"
-        ' _ "$BLENDER" "$WORK" "$RUN"
-
-    # 拓扑门禁：即使 prepare_and_test_rig.py 因 RuntimeError 异常退出，
-    # 也会经由上面的 set -e 触发失败；此处再对日志做关键词兜底，给出明确提示。
-    if grep -qiE "not a standard 22-bone humanoid|refusing to apply semantic mapping|non-standard skeleton" "$LOG2" 2>/dev/null; then
-        fail "第②步拓扑门禁失败：skeletons 不是标准的 22 骨 humanoid"
-        topology_hint
-        echo "诊断报告：$DIAG_JSON" >&2
+        ' _ "$BLENDER" "$WORK" "$RUN"; then
+        fail "第②步固定 SMPL-22 契约验收失败"
+        if grep -qiE "fixed smpl22|Skin weight contract failed|violates fixed" "$LOG2" 2>/dev/null; then
+            topology_hint
+            echo "诊断报告：$DIAG_JSON" >&2
+        else
+            echo "日志：$LOG2" >&2
+        fi
         exit 1
     fi
     ok "阶段②完成：$RUN/rigging/character_rigged_clean.glb"
@@ -299,7 +370,7 @@ fi
 if [[ "$START_STAGE" -le 5 ]] && ! should_skip 5; then
     run_step "阶段 ⑤ Blender 重定向/烘焙（产出最终动画 GLB）" \
         bash -c '
-            "$1" --background \
+            "$1" --background --python-exit-code 1 \
                 --python "$2/pipeline/scripts/apply_gvhmr_motion.py" -- \
                 --character "$3/rigging/character_rigged_clean.glb" \
                 --motion "$3/motion/"$4"_smpl22.npz" \
