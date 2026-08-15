@@ -1,146 +1,215 @@
-# naqi：MP4 到动画 GLB 的可复刻流水线
+# naqi：MP4 到动画 GLB
 
-这个目录是 Hackday 当前角色动作实验的自包含工作包。目标输入是：
+`naqi/` 是本项目的干净复现包。它只保留当前有效的代码、数据契约、最终资产和必要 QA 结果；旧版映射、压力测试、临时预览和中间 GLB 已移除。
+
+## 流程总览
 
 ```text
-一个单人动作 MP4 + 一个没有骨骼的角色 GLB
-        │
-        ├─ SkinTokens：生成骨架、蒙皮权重，并转回原始网格
-        ├─ 拓扑分析：根据父子关系、分叉和链结构识别身体主干
-        ├─ GVHMR：从视频提取 SMPL-X 参数
-        ├─ SMPL-22：导出便携动作数据
-        └─ Blender：按绑定姿态重定向、逐帧烘焙并导出 GLB
-        │
-        ├─ character_rigged.glb
-        └─ character_video_animated.glb
+MP4 + 无骨骼 GLB
+  1. SkinTokens --use-transfer：生成骨架、蒙皮权重，并保留原始网格/PBR
+  2. 拓扑分析：识别 Pelvis、Spine、手臂、腿和额外手指骨
+  3. 拓扑映射：生成 SkinTokens bone -> SMPL-22 映射
+  4. GVHMR：在 CUDA GPU 上从视频推理 SMPL-X 动作
+  5. 动作契约：导出 SMPL-22 rotations/translations 的 NPZ
+  6. Blender：全局旋转转换、绑定姿态修正、根位移缩放、逐帧烘焙
+  7. QA：检查 GLB skin/蒙皮属性/动画，并渲染少量关键帧 PNG
+  ↓
+ 骨骼+蒙皮 GLB + 带动画 GLB
 ```
 
-## 给其他 AI 的一键复刻入口
+当前重定向不是按 `bone_0、bone_1...` 猜编号，而是使用父子关系、分叉数量、链长度和空间侧别。SMPL-22 的局部旋转会先累积为全局旋转，再转换到目标 GLB 的绑定姿态，最后还原为目标骨骼局部旋转。
 
-这条命令在已经准备好 GVHMR、SkinTokens 和 Blender 的 Linux GPU 服务器上执行。当前验证过的默认目录是：
+## 目录
+
+```text
+naqi/
+├─ README.md
+├─ input/                         # 原始、无骨骼的角色 GLB
+│  ├─ 雪帽少女.glb
+│  └─ 冰雪射手.glb
+├─ output/
+│  ├─ rigged/                     # SkinTokens 生成的骨骼+蒙皮 GLB
+│  ├─ animated/                   # 当前四个最终动画 GLB
+│  ├─ reports/topology/           # 骨树分析报告
+│  ├─ reports/retarget/           # 四个动画的重定向报告
+│  └─ preview/                    # video2 的最终关键帧 PNG
+├─ motion/                        # 可复用的 SMPL-22 动作契约和 manifest
+├─ config/                        # SMPL-22 契约和示例拓扑映射
+├─ scripts/                       # 唯一运行入口及必要阶段脚本
+└─ docs/                          # 社区插件/参数解码参考
+```
+
+视频没有复制进这个目录；运行时直接把 MP4 路径传给脚本。`motion/video1_smpl22.npz` 和 `motion/video2_smpl22.npz` 是已经提取好的动作数据契约，不是临时日志。
+
+## 运行环境
+
+脚本假设远程 GPU 机器已经准备好：
+
+```text
+SKINTOKENS_HOME=/home/naqi/SkinTokens
+GVHMR_HOME=/home/naqi/GVHMR
+BLENDER_BIN=/usr/local/bin/blender
+```
+
+也可以通过环境变量改成其他路径。GVHMR 使用 `.venv310` 的 CUDA/PyTorch；Blender 的骨骼矩阵和关键帧写入主要是 CPU，关键帧渲染脚本会优先尝试 Cycles CUDA/OptiX。
+
+## 一键运行
+
+先检查环境：
 
 ```bash
-export SKINTOKENS_HOME=/home/naqi/SkinTokens
-export GVHMR_HOME=/home/naqi/GVHMR
-export BLENDER_BIN=/usr/local/bin/blender
+cd /path/to/hackday-0807/naqi/scripts
+bash run_naqi_pipeline.sh --check
+```
 
-cd /home/naqi/hackday-character-pipeline/naqi/scripts
+然后传入一个 MP4、一个无骨骼 GLB 和输出目录：
+
+```bash
 bash run_naqi_pipeline.sh \
   /data/input/action.mp4 \
   /data/input/character.glb \
-  /data/output/character_action \
+  /data/run/character_action \
   static
 ```
 
-最后一个参数是相机模式：
+最后一个参数可选：
 
-- `static`：固定机位视频，给 GVHMR 传 `--static_cam`；
-- `moving`：相机可能移动的视频，不传这个参数。
+- `static`：固定机位，传给 GVHMR `--static_cam`；
+- `moving`：移动机位，不传 `--static_cam`。
 
-如果角色 GLB 的 x 正方向对应角色右侧，而不是默认的左侧，使用：
+角色 GLB 的 x 正方向如果对应角色右侧，设置：
 
 ```bash
 NAQI_MAPPING_SIDE=right bash run_naqi_pipeline.sh action.mp4 character.glb output moving
 ```
 
-运行前可先检查远程环境：
+可选变量：
 
 ```bash
-bash run_naqi_pipeline.sh --check
+NAQI_FPS=24                 # 不设置时优先用 ffprobe，失败后默认 24
+NAQI_RENDER_KEYFRAMES=0    # 只要 GLB/报告、不渲染 PNG 时关闭
+SKINTOKENS_SERVER_TIMEOUT=600
 ```
 
-脚本位置是 [`scripts/run_naqi_pipeline.sh`](scripts/run_naqi_pipeline.sh)。它不会生成 MP4，而是生成 GLB 内置动画和少量关键帧 PNG 供检查。
+## 一键脚本生成的文件
 
-## 从本地上传到 GPU 服务器
+假设输出目录是 `output/character_action/`：
 
-如果 MP4 和 GLB 在本地 Windows 机器上，可以先上传，再在服务器执行上面的命令：
+```text
+output/character_action/
+├─ inputs/character.glb                    # 输入快照
+├─ inputs/action.mp4                       # 输入快照
+├─ rigging/character_rigged.glb            # 阶段 1：SkinTokens 输出
+├─ reports/topology.json                   # 阶段 2：骨树报告
+├─ reports/topology_mapping.json           # 阶段 3：22 骨映射
+├─ motion/gvhmr/<video>/hmr4d_results.pt   # 阶段 4：GVHMR 原始结果
+├─ motion/action_smpl22.npz                # 阶段 5：便携动作
+├─ motion/action_motion_manifest.json      # 帧数/FPS/时长/平移范围
+├─ outputs/character_action_animated.glb   # 阶段 6：最终动画 GLB
+├─ reports/retarget.json                   # 重定向参数和帧数
+├─ reports/animation.json                  # 阶段 7：GLB 结构检查
+├─ renders/keyframes/frame_*.png           # 阶段 7：关键帧变形检查
+└─ logs/                                   # 每个阶段的日志
+```
+
+动画直接保存在 GLB 的 `animations` 中，不需要生成 MP4；用 Blender、Three.js、Babylon.js 或其他 glTF viewer 打开 `outputs/*_animated.glb` 即可播放。
+
+## 分阶段运行
+
+一键脚本已经按下面顺序执行。需要定位问题时，可以复用这些命令。
+
+### 1. SkinTokens 生成骨骼和蒙皮
+
+输入必须是无骨骼 GLB。`--use-transfer` 会把预测的骨骼/权重转回原始网格，避免把归一化白模误当作最终角色：
 
 ```bash
-scp -P <SSH_PORT> action.mp4 character.glb \
-  <REMOTE_USER>@<GPU_HOST>:/data/input/
+SKIN_PY="$SKINTOKENS_HOME/.venv/bin/python"
+"$SKIN_PY" scripts/run_skintokens_offline.py \
+  --skintokens-home "$SKINTOKENS_HOME" \
+  --input input/雪帽少女.glb \
+  --output output/rigged/雪帽少女_rigged.glb \
+  --server-timeout 600 \
+  --use-transfer
 ```
 
-服务器不可达时先检查 SSH/VPN/端口；网络超时不能当成 GVHMR 或 SkinTokens 模型错误。实际服务器地址、账号、端口和代理从管理员/SSH 配置取得，不要写入仓库。
+### 2. 分析 SkinTokens 骨树
 
-## 输出目录
-
-一次运行会得到类似下面的结构：
-
-```text
-output/
-├─ inputs/character.glb                 # 输入快照
-├─ inputs/action.mp4                    # 输入快照
-├─ rigging/character_rigged.glb         # SkinTokens 生成的骨骼+蒙皮 GLB
-├─ motion/gvhmr/<video>/hmr4d_results.pt # GVHMR 原始结果
-├─ motion/action_smpl22.npz             # 便携 SMPL-22 动作
-├─ motion/action_motion_manifest.json   # 帧数、FPS、时长、平移范围
-├─ outputs/character_action_animated.glb # 最终动画 GLB
-├─ reports/topology.json                # GLB 骨树分析
-├─ reports/topology_mapping.json        # 自动生成的 22 关节映射
-├─ reports/retarget.json                # 重定向报告
-├─ reports/animation.json               # GLB 结构检查
-├─ renders/keyframes/*.png              # Blender/Cycles 关键帧检查
-└─ logs/                                # 每一步的日志
+```bash
+"$GVHMR_HOME/.venv310/bin/python" scripts/inspect_skin_tokens_topology.py \
+  --input output/rigged/雪帽少女_rigged.glb \
+  --output output/reports/topology/snow_girl_topology.json
 ```
 
-最终动画不是另一个视频文件。播放器、网页 glTF viewer 或 Blender 直接打开 `outputs/*_animated.glb`，选择其中的 Action/Animation，就能播放动画。
+### 3. 生成 SMPL-22 拓扑映射
 
-## 代码分工
-
-- [`scripts/run_skintokens_offline.py`](scripts/run_skintokens_offline.py)：调用 SkinTokens 原始 CLI，`--use-transfer` 把生成的骨架/蒙皮转回输入网格。
-- [`scripts/inspect_skin_tokens_topology.py`](scripts/inspect_skin_tokens_topology.py)：不依赖 Blender 读取 GLB，分析根节点、躯干、手臂、腿和手指分支。
-- [`scripts/build_topology_mapping.py`](scripts/build_topology_mapping.py)：把拓扑报告中的 `Pelvis/Shoulder/Elbow/...` 语义槽转换为 SMPL-22 索引。
-- [`scripts/extract_gvhmr_motion.py`](scripts/extract_gvhmr_motion.py)：从 GVHMR `.pt` 导出 `rotations`、`translations`、`fps` 和 `joint_names`。
-- [`scripts/apply_gvhmr_motion.py`](scripts/apply_gvhmr_motion.py)：在 Blender 中读取带蒙皮 GLB，按绑定姿态重定向并逐帧写入关键帧。
-- [`scripts/inspect_glb_animation.py`](scripts/inspect_glb_animation.py)：检查 `skins`、`JOINTS_0`、`WEIGHTS_0`、`animations`、动画时长和通道数。
-- [`scripts/render_glb_keyframes.py`](scripts/render_glb_keyframes.py)：只渲染关键帧 PNG，不编码 MP4。
-
-旋转处理的核心是：
-
-```text
-GVHMR 的 SMPL-22 局部旋转
-  -> 按 SMPL 父子树累积成全局旋转
-  -> Y-up/Z-up 坐标变换
-  -> 乘目标 GLB 绑定姿态
-  -> 还原目标骨骼局部旋转
+```bash
+"$GVHMR_HOME/.venv310/bin/python" scripts/build_topology_mapping.py \
+  --topology-report output/reports/topology/snow_girl_topology.json \
+  --output output/reports/topology/snow_girl_mapping.json \
+  --x-positive-is-left
 ```
 
-这一步是修正“原视频手臂自然下垂，但角色手臂被抬平”的关键。不能把 `bone_0、bone_1、...` 的编号直接当成 SMPL 编号；`build_topology_mapping.py` 使用拓扑和语义槽完成映射。
+### 4. GVHMR 视频动作推理
 
-## 输入约束和自动映射边界
-
-一键脚本适用于 SkinTokens 能生成以下身体主干的角色：
-
-```text
-Pelvis -> Spine1 -> Spine2 -> Spine3
-                       ├─ Neck -> Head
-                       ├─ Collar -> Shoulder -> Elbow -> Wrist
-                       ├─ Hip -> Knee -> Ankle -> Foot
-                       └─ 另一侧同样的手臂和腿
+```bash
+GVHMR_PY="$GVHMR_HOME/.venv310/bin/python"
+env PYTHONPATH="$GVHMR_HOME" TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1 \
+  "$GVHMR_PY" "$GVHMR_HOME/tools/demo/demo.py" \
+  --video /data/input/action.mp4 \
+  --output_root /data/run/character_action/motion/gvhmr \
+  --static_cam
 ```
 
-雪帽少女实际有 46 个 joints，其中多出来的是手指骨；冰雪射手当前有 22 个 joints。两者都通过了这套拓扑映射。手指和弓箭等道具骨骼会保留在 rigged GLB 中，但当前 `SMPL-22` 动作不包含手指姿态，也不会自动驱动道具。
+原始结果通常在 `<output_root>/<video-stem>/hmr4d_results.pt`。固定机位不确定时，去掉 `--static_cam`。
 
-如果新角色的骨树没有清晰的左右手臂/腿链，脚本会在拓扑报告或映射步骤失败。此时先查看 `reports/topology.json`，人工修正映射 JSON 后，再把它传给 `apply_gvhmr_motion.py --mapping-json`；不要默认为“编号恰好对应”。
+### 5. 导出 SMPL-22 NPZ
 
-## GPU 使用边界
+```bash
+"$GVHMR_PY" scripts/extract_gvhmr_motion.py \
+  --input /data/run/character_action/motion/gvhmr/action/hmr4d_results.pt \
+  --output /data/run/character_action/motion/action_smpl22.npz \
+  --manifest /data/run/character_action/motion/action_motion_manifest.json \
+  --fps 24
+```
 
-- GVHMR 推理在远程 `.venv310` 的 CUDA/PyTorch 环境运行，已验证 RTX 5090 D v2。
-- SkinTokens 的模型推理由其项目和 bpy 服务配置决定，日志中应确认服务是否使用 GPU。
-- Blender 的重定向主要是骨骼矩阵和关键帧写入，通常是 CPU 工作；把数据放进显存不会自动让 Python/bpy 骨骼计算变成 GPU 计算。
-- `render_glb_keyframes.py` 会优先尝试 Cycles CUDA/OptiX；如果 Blender 没有可用设备，会明确回退 CPU。
+此步骤需要 CUDA，因为会用 GVHMR 的 SMPL-X 模型计算源角色高度并进行动作数据检查。
 
-## 当前已生成的实验资产
+### 6. Blender 重定向并导出动画 GLB
 
-`assets/outputs/topology_retarget/` 中的四个 `_topology_global_animated.glb` 是当前修正后的候选：
+```bash
+"$BLENDER_BIN" --background --python scripts/apply_gvhmr_motion.py -- \
+  --character output/rigged/雪帽少女_rigged.glb \
+  --motion /data/run/character_action/motion/action_smpl22.npz \
+  --mapping-json /data/run/character_action/reports/topology_mapping.json \
+  --output /data/run/character_action/outputs/雪帽少女_action_animated.glb \
+  --report /data/run/character_action/reports/retarget.json
+```
 
-- `snow_girl_video1_topology_global_animated.glb`
-- `snow_girl_video2_topology_global_animated.glb`
-- `ice_archer_video1_topology_global_animated.glb`
-- `ice_archer_video2_topology_global_animated.glb`
+### 7. 结构和变形 QA
 
-它们都通过了当前结构检查：1 个 skin、存在 `JOINTS_0/WEIGHTS_0`、1 条动画；视频 1 为 97 帧、约 4.04 秒，视频 2 为 241 帧、约 10.04 秒。`assets/legacy/` 仅用于和旧版错误编号映射做对照。
+```bash
+"$GVHMR_PY" scripts/inspect_glb_animation.py \
+  /data/run/character_action/outputs/雪帽少女_action_animated.glb \
+  > /data/run/character_action/reports/animation.json
 
-## 社区插件说明
+"$BLENDER_BIN" --background --python scripts/render_glb_keyframes.py -- \
+  --input /data/run/character_action/outputs/雪帽少女_action_animated.glb \
+  --output-dir /data/run/character_action/renders/keyframes \
+  --frames 1,80,160
+```
 
-GVHMR 官方仓库提供推理和 `.pt` 输出，不提供官方 Blender 插件。PKL-Loader-Blender、CEB HubMocap 等社区工具可以参考它们的轴角转换、坐标修正和逐帧关键帧逻辑，但不会自动识别任意 SkinTokens GLB。本目录的实现把这些思路改成了面向本项目拓扑的脚本；HaMeR 手部动作尚未接入当前 SMPL-22 主流程。
+验收至少应看到：`skins=1`、有 `JOINTS_0/WEIGHTS_0`、`animations=1`、动画时长和视频一致；关键帧再检查脚底滑动、手臂扭曲、根节点漂移和身体比例。
+
+## 本目录保留的最终资产
+
+- `output/rigged/雪帽少女_rigged.glb`：SkinTokens 生成的 46-joint 骨骼+蒙皮 GLB。
+- `output/rigged/冰雪射手_rigged.glb`：SkinTokens 生成的 22-joint 骨骼+蒙皮 GLB。
+- `output/animated/雪帽少女_video2_animated.glb`：当前修正后最满意的 video2 结果。
+- `output/animated/雪帽少女_video1_animated.glb`、`冰雪射手_video1_animated.glb`、`冰雪射手_video2_animated.glb`：其余三组最终候选。
+- `output/preview/`：雪帽少女和冰雪射手 video2 的关键帧 PNG。
+
+雪帽少女的额外手指骨会保留在 GLB 中，但当前 GVHMR 输出是 SMPL-22，不包含手指姿态；弓箭等道具也不会自动获得独立动作。新角色如果没有清晰的躯干、双臂和双腿链，自动映射应停在报告阶段，人工确认映射后再重定向。
+
+## 依赖边界
+
+GVHMR 官方仓库提供推理和 `.pt` 输出，没有官方 Blender 插件。社区 GVHMR/HaMeR Blender 工具只作为轴角解码、坐标修正和逐帧关键帧的参考；本目录的实际入口是 `scripts/run_naqi_pipeline.sh`，而不是社区插件。

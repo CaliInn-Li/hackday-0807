@@ -27,5 +27,5 @@
     "bone_25": 21
   },
   "extra_bones_policy": "Keep all finger descendants in the exported armature; GVHMR SMPL-22 does not key them, so they follow the wrist at rest pose.",
-  "source_topology_report": "../reports/snow_girl_rigged_topology.json"
+  "source_topology_report": "../output/reports/topology/snow_girl_rigged_topology.json"
 }

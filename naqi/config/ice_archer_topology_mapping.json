@@ -27,5 +27,5 @@
     "bone_13": 21
   },
   "extra_bones_policy": "No finger descendants were present in the inspected 22-joint archer GLB.",
-  "source_topology_report": "../reports/ice_archer_rigged_topology.json"
+  "source_topology_report": "../output/reports/topology/ice_archer_rigged_topology.json"
 }
