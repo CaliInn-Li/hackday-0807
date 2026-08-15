@@ -434,6 +434,15 @@ cd /home/naqi/SkinTokens
 这里的输入必须由 `create_fixed_smpl22_skeleton.py` 生成；不能直接把无骨架的原始角色传给
 `--use-skeleton`。
 
+固定骨架拟合不是简单按整个 AABB 等比缩放。脚本先估计不受披风/长发影响的躯干中轴，再从
+T/A Pose 网格的窄 X 截面计算上臂、肘和腕的稳健体积中心，并从最低轮廓切片定位左右脚；
+膝盖随髋部与脚中心插值。完整采样数、接受/回退状态及最终关节坐标记录在
+`character_skeleton_fit.json` 的 `landmark_fit` 与 `joints` 中。
+
+> Blender 画出的手、头、脚末端长线是 leaf bone 的 `tail`，不是额外关节，也不决定蒙皮。
+> glTF 只保存 joint 节点而不保存 leaf tail，重新导入时 Blender 可能按父骨长度重建显示；
+> 本项目在 Blender 处理阶段将其修成短的语义方向线，验收应以 joint/head 与权重空间为准。
+
 ### 8.4 实测耗时
 
 - 网络盘双进程冷启动：可能 2–4 分钟。
@@ -554,9 +563,9 @@ pipeline/config/smpl22_skeleton.json
 - 左侧位于角色 +X，右侧位于 -X；
 - 每个顶点有1–4个权重且权重和为1；
 - 每根语义骨都有正权重影响；
-- 骨头在扩展网格包围盒内，并靠近其加权顶点中心。
+- 骨头在扩展网格包围盒内，并靠近其加权顶点中心；四肢超过 0.35 身高直接失败，躯干/头部因可能驱动披风、长裙、长发或背包，0.30 后告警、0.50 后失败。
 
-不满足时脚本会直接停止，并把完整契约、映射、拓扑和权重空间报告写入 `--diagnostic`。
+不满足时脚本会先把完整契约、映射、拓扑和权重空间报告写入 `--diagnostic`，然后停止；告警不会绕过每顶点权重、左右侧或四肢空间门禁。
 
 **遇到门禁报错的正确处置**：检查 `character_skeleton_fit.json`、
 `logs/00_fixed_skeleton.log` 和 `logs/01_skintokens.log` 中的 `use_skeleton=true`；不能随机重采样或恢复固定 `bone_N` 映射。

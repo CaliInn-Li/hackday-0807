@@ -57,8 +57,9 @@ BLENDER_BIN=/usr/local/bin/blender \
 bash run.sh
 ```
 
-- 阶段①A先把固定 `smpl22-mixamo-v1` 骨架拟合并嵌入原始角色；阶段①B使用 SkinTokens `--use-skeleton --use-transfer`，只生成蒙皮权重，不允许模型自由生成骨架拓扑。
-- 阶段②以①A的语义骨架为参考，验证22骨、完整父子图、左右语义、关节/权重空间关系和每顶点权重，再输出 clean GLB 与压力测试。
+- 阶段①A先把固定 `smpl22-mixamo-v1` 骨架拟合并嵌入原始角色；除躯干中轴外，还会从 T/A Pose 网格横截面估计上臂、肘、腕和双脚中心，使四肢关节进入模型体积中心。拟合数值写入 `character_skeleton_fit.json`。
+- 阶段①B使用 SkinTokens `--use-skeleton --use-transfer`，只生成蒙皮权重，不允许模型自由生成骨架拓扑。
+- 阶段②以①A的语义骨架为参考，验证22骨、完整父子图、左右语义、关节/权重空间关系和每顶点权重，再输出 clean GLB 与压力测试。四肢权重保持严格空间阈值；躯干/头部允许披风、长裙、长发等附件拉远整体权重质心，但超过硬阈值仍会失败。
 - 阶段⑤按“SMPL局部旋转 → SMPL全局旋转 → 目标绑定姿态 → 目标局部旋转”烘焙动作。
 - 最终动画：`runs/<名称>/motion/character_action_animated.glb`。
 - 日志和中间产物全部保存在对应的 `runs/<名称>/` 中。
@@ -70,6 +71,8 @@ SKINTOKENS_SEED=0                 # 蒙皮生成可复现
 SKINTOKENS_USE_POSTPROCESS=1      # 开启官方体素蒙皮后处理
 PIPELINE_BODY_CENTER_Y=<数值>     # 极端披风/背包模型手工覆盖人体中轴Y
 ```
+
+Blender 显示的手、头、脚末端细长部分是 leaf bone 的 `tail`，不是额外关节；glTF 只保存 joint 节点、不保存 leaf tail。主管线会在 Blender 处理阶段把它修成短的语义方向显示线，蒙皮位置以骨骼 head/joint 为准。
 
 无需 Blender/GPU 的本地契约测试：
 

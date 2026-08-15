@@ -63,6 +63,17 @@ SMPL22_PARENTS = (
 CONTRACT_NAME = "smpl22-mixamo-v1"
 SKINTOKENS_TRANSFER_ARMATURE_NAME = "Armature"
 
+AXIAL_ACCESSORY_BONES = frozenset(
+    {
+        "mixamorig:Hips",
+        "mixamorig:Spine",
+        "mixamorig:Spine1",
+        "mixamorig:Spine2",
+        "mixamorig:Neck",
+        "mixamorig:Head",
+    }
+)
+
 PREFERRED_TAIL_CHILD = {
     parent: child
     for child, parent in SMPL22_TARGET_PARENTS.items()
@@ -71,6 +82,31 @@ PREFERRED_TAIL_CHILD = {
 PREFERRED_TAIL_CHILD.update(
     {"mixamorig:Hips": "mixamorig:Spine", "mixamorig:Spine2": "mixamorig:Neck"}
 )
+
+
+def weight_distance_policy(name: str, normalized_distance: float) -> dict:
+    """Classify bone-to-weight-centroid distance without rejecting accessories.
+
+    Torso/head bones legitimately drive long hair, skirts, capes and backpacks,
+    so their aggregate weighted centroid is a weak localization signal. Limb
+    centroids remain strict because they are also used to detect side swaps.
+    """
+    distance = float(normalized_distance)
+    is_axial = name in AXIAL_ACCESSORY_BONES
+    warning_limit = 0.30 if is_axial else 0.28
+    hard_limit = 0.50 if is_axial else 0.35
+    if distance > hard_limit:
+        level = "error"
+    elif distance > warning_limit:
+        level = "warning"
+    else:
+        level = "ok"
+    return {
+        "level": level,
+        "category": "axial_accessory_driver" if is_axial else "limb",
+        "warning_limit": warning_limit,
+        "hard_limit": hard_limit,
+    }
 
 
 def validate_template_payload(payload: Mapping) -> list[str]:

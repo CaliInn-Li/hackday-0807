@@ -13,10 +13,19 @@ from rig_contract import (
     canonical_parent_map,
     match_to_reference,
     validate_template_payload,
+    weight_distance_policy,
 )
 
 
 class RigContractTests(unittest.TestCase):
+
+    def test_axial_accessory_centroid_is_warning_not_limb_failure(self):
+        spine = weight_distance_policy("mixamorig:Spine2", 0.357)
+        arm = weight_distance_policy("mixamorig:LeftArm", 0.357)
+        severe_spine = weight_distance_policy("mixamorig:Spine2", 0.501)
+        self.assertEqual("warning", spine["level"])
+        self.assertEqual("error", arm["level"])
+        self.assertEqual("error", severe_spine["level"])
     @classmethod
     def setUpClass(cls):
         cls.template = json.loads(

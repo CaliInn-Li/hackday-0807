@@ -23,7 +23,11 @@ from rig_contract import (
     SMPL22_TARGET_PARENTS,
     validate_template_payload,
 )
-from skeleton_fit import estimate_body_axis
+from skeleton_fit import (
+    estimate_arm_section_center,
+    estimate_body_axis,
+    estimate_foot_centers,
+)
 
 
 def parse_args():
@@ -58,7 +62,7 @@ def load_template(path):
         [item["name"] for item in joints],
         {item["name"]: item.get("parent") for item in joints},
         {item["name"]: Vector(item["position"]) for item in joints},
-        payload.get("fit", {}).get("body_axis", {}),
+        payload.get("fit", {}),
     )
 
 
@@ -112,13 +116,15 @@ def fit_positions(
     points,
     minimum,
     maximum,
-    body_axis_settings,
+    fit_settings,
     body_center_y_override=None,
 ):
     extent = maximum - minimum
     if min(extent) <= 1e-8:
         raise RuntimeError(f"Degenerate character bounds: min={minimum}, max={maximum}")
-    body_axis = estimate_body_axis(points, minimum, maximum, body_axis_settings)
+    body_axis = estimate_body_axis(
+        points, minimum, maximum, fit_settings.get("body_axis", {})
+    )
     if body_center_y_override is not None:
         body_axis["center_y"] = float(body_center_y_override)
         body_axis["sample_mode"] = "manual_override"
@@ -138,6 +144,44 @@ def fit_positions(
         )
         for name, normalized in template_positions.items()
     }
+
+    landmark_settings = fit_settings.get("limb_landmarks", {})
+    landmark_report = {"arms": {}, "feet": {}}
+    for side in ("Left", "Right"):
+        for joint in ("Arm", "ForeArm", "Hand"):
+            name = f"mixamorig:{side}{joint}"
+            section = estimate_arm_section_center(
+                points, minimum, maximum, positions[name].x, landmark_settings
+            )
+            landmark_report["arms"][name] = section
+            if section["accepted"]:
+                positions[name].y = section["y"]
+                positions[name].z = section["z"]
+
+        shoulder_name = f"mixamorig:{side}Shoulder"
+        arm_name = f"mixamorig:{side}Arm"
+        if landmark_report["arms"][arm_name]["accepted"]:
+            spine = positions["mixamorig:Spine2"]
+            arm = positions[arm_name]
+            positions[shoulder_name].y = spine.y * 0.75 + arm.y * 0.25
+            positions[shoulder_name].z = spine.z * 0.75 + arm.z * 0.25
+
+    feet = estimate_foot_centers(points, minimum, maximum, landmark_settings)
+    landmark_report["feet"] = feet
+    if feet["accepted"]:
+        for side, label in (("Left", "left"), ("Right", "right")):
+            hip_name = f"mixamorig:{side}UpLeg"
+            knee_name = f"mixamorig:{side}Leg"
+            foot_name = f"mixamorig:{side}Foot"
+            toe_name = f"mixamorig:{side}ToeBase"
+            foot_x = feet[label]["x"]
+            hip_x = positions[hip_name].x
+            positions[knee_name].x = hip_x * 0.45 + foot_x * 0.55
+            positions[foot_name].x = foot_x
+            positions[toe_name].x = foot_x
+            positions[foot_name].y = (
+                body_axis["center_y"] * 0.5 + feet[label]["y"] * 0.5
+            )
     bounds_center_y = (minimum.y + maximum.y) * 0.5
     body_axis.update(
         {
@@ -148,10 +192,10 @@ def fit_positions(
             "height": float(height),
         }
     )
-    return positions, body_axis
+    return positions, body_axis, landmark_report
 
 
-def create_armature(names, parents, positions, height):
+def create_armature(names, parents, positions, minimum, maximum):
     # SkinTokens' current transfer implementation recreates a literal
     # ``Armature`` and looks it up by the imported asset name.
     data = bpy.data.armatures.new(SKINTOKENS_TRANSFER_ARMATURE_NAME)
@@ -165,12 +209,28 @@ def create_armature(names, parents, positions, height):
     armature.select_set(True)
     bpy.ops.object.mode_set(mode="EDIT")
     edit_bones = {}
+    height = maximum.z - minimum.z
+    terminal_directions = {
+        "mixamorig:Head": Vector((0, 0, 1)),
+        "mixamorig:LeftHand": Vector((1, 0, 0)),
+        "mixamorig:RightHand": Vector((-1, 0, 0)),
+        "mixamorig:LeftToeBase": Vector((0, -1, 0)),
+        "mixamorig:RightToeBase": Vector((0, -1, 0)),
+    }
     for name in names:
         bone = data.edit_bones.new(name)
         bone.head = positions[name]
         child = PREFERRED_TAIL_CHILD.get(name)
         if child:
             bone.tail = positions[child]
+        elif name in terminal_directions:
+            tail = positions[name] + terminal_directions[name] * max(height * 0.02, 1e-5)
+            bone.tail = Vector(
+                tuple(
+                    min(max(float(tail[axis]), float(minimum[axis])), float(maximum[axis]))
+                    for axis in range(3)
+                )
+            )
         elif parents[name]:
             direction = positions[name] - positions[parents[name]]
             if direction.length < height * 1e-4:
@@ -266,19 +326,19 @@ def export_glb(path, armature, meshes):
 def main():
     args = parse_args()
     reset_scene()
-    names, parents, template_positions, body_axis_settings = load_template(args.template)
+    names, parents, template_positions, fit_settings = load_template(args.template)
     meshes = import_static_character(args.input)
     points = mesh_points(meshes)
     minimum, maximum = mesh_bounds(points)
-    positions, body_axis = fit_positions(
+    positions, body_axis, landmark_fit = fit_positions(
         template_positions,
         points,
         minimum,
         maximum,
-        body_axis_settings,
+        fit_settings,
         args.body_center_y,
     )
-    armature = create_armature(names, parents, positions, maximum.z - minimum.z)
+    armature = create_armature(names, parents, positions, minimum, maximum)
     add_placeholder_weights(meshes, armature, names, positions)
     validate_placeholder(meshes, names)
     export_glb(args.output, armature, meshes)
@@ -291,6 +351,7 @@ def main():
         "bone_count": len(names),
         "mesh_count": len(meshes),
         "body_axis": body_axis,
+        "landmark_fit": landmark_fit,
         "bounds": {
             "min": [float(value) for value in minimum],
             "max": [float(value) for value in maximum],

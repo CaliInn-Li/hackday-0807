@@ -16,6 +16,7 @@ from rig_contract import (
     PREFERRED_TAIL_CHILD,
     SMPL22_TARGET_PARENTS,
     match_to_reference,
+    weight_distance_policy,
 )
 
 
@@ -408,11 +409,22 @@ def repair_bone_tails(armature):
         bones["mixamorig:Head"].head.z - bones["mixamorig:Hips"].head.z,
         1e-5,
     )
+    terminal_directions = {
+        "mixamorig:Head": Vector((0, 0, 1)),
+        "mixamorig:LeftHand": Vector((1, 0, 0)),
+        "mixamorig:RightHand": Vector((-1, 0, 0)),
+        "mixamorig:LeftToeBase": Vector((0, -1, 0)),
+        "mixamorig:RightToeBase": Vector((0, -1, 0)),
+    }
     for name, parent in SMPL22_TARGET_PARENTS.items():
         bone = bones[name]
         child = PREFERRED_TAIL_CHILD.get(name)
         if child:
             bone.tail = bones[child].head
+        elif name in terminal_directions:
+            bone.tail = bone.head + terminal_directions[name] * max(
+                body_height * 0.04, 1e-5
+            )
         elif parent:
             direction = bone.head - bones[parent].head
             if direction.length < body_height * 1e-4:
@@ -426,6 +438,7 @@ def validate_skin_weights(armature, meshes):
     expected = set(SMPL22_TARGET_PARENTS)
     influenced_bones = set()
     problems = []
+    warnings = []
     world_vertices = [
         (mesh, vertex, mesh.matrix_world @ vertex.co)
         for mesh in meshes
@@ -436,7 +449,12 @@ def validate_skin_weights(armature, meshes):
     height = max(maximum.z - minimum.z, 1e-6)
     weighted_sums = {name: Vector((0, 0, 0)) for name in expected}
     weight_totals = {name: 0.0 for name in expected}
-    summary = {"meshes": [], "influenced_bones": [], "joint_weight_fit": {}}
+    summary = {
+        "meshes": [],
+        "influenced_bones": [],
+        "joint_weight_fit": {},
+        "warnings": warnings,
+    }
     for mesh in meshes:
         group_names = {group.index: group.name for group in mesh.vertex_groups}
         unexpected = sorted(set(group_names.values()) - expected)
@@ -493,6 +511,7 @@ def validate_skin_weights(armature, meshes):
         centroids[name] = centroid
         head = armature.matrix_world @ armature.data.bones[name].head_local
         normalized_distance = (centroid - head).length / height
+        distance_policy = weight_distance_policy(name, normalized_distance)
         inside_expanded_bounds = all(
             minimum[axis] - margin <= head[axis] <= maximum[axis] + margin
             for axis in range(3)
@@ -501,13 +520,22 @@ def validate_skin_weights(armature, meshes):
             "bone_head": [round(float(value), 7) for value in head],
             "weighted_centroid": [round(float(value), 7) for value in centroid],
             "normalized_distance": round(float(normalized_distance), 6),
+            "distance_policy": distance_policy,
             "inside_expanded_mesh_bounds": inside_expanded_bounds,
         }
         if not inside_expanded_bounds:
             problems.append(f"{name} head lies outside the mesh bounds")
-        if normalized_distance > 0.35:
+        if distance_policy["level"] == "error":
             problems.append(
-                f"{name} is too far from its weighted vertices: {normalized_distance:.3f} body heights"
+                f"{name} is too far from its weighted vertices: "
+                f"{normalized_distance:.3f} body heights > "
+                f"{distance_policy['hard_limit']:.3f} "
+                f"({distance_policy['category']})"
+            )
+        elif distance_policy["level"] == "warning":
+            warnings.append(
+                f"{name} weighted centroid is {normalized_distance:.3f} body heights "
+                f"away; accepted as {distance_policy['category']}"
             )
 
     hips_x = (armature.matrix_world @ armature.data.bones["mixamorig:Hips"].head_local).x
@@ -519,9 +547,8 @@ def validate_skin_weights(armature, meshes):
             problems.append(f"{left_name} weights are not on the +X character-left side")
         if right_name in centroids and centroids[right_name].x >= hips_x + side_tolerance:
             problems.append(f"{right_name} weights are not on the -X character-right side")
-    if problems:
-        raise RuntimeError("Skin weight contract failed:\n  - " + "\n  - ".join(problems))
-    return summary
+    summary["problems"] = problems
+    return summary, problems
 
 
 def detach_skinned_mesh_roots(meshes):
@@ -689,11 +716,19 @@ def main():
     )
     rename_skeleton(armature, meshes, effective_mapping)
     repair_bone_tails(armature)
-    weight_report = validate_skin_weights(armature, meshes)
+    weight_report, weight_problems = validate_skin_weights(armature, meshes)
     diagnostic["skin_weights"] = weight_report
+    diagnostic["problems"] = sorted(
+        set(diagnostic.get("problems", []) + weight_problems)
+    )
+    diagnostic["is_valid_humanoid"] = not diagnostic["problems"]
     if args.diagnostic:
         Path(args.diagnostic).write_text(
             json.dumps(diagnostic, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    if weight_problems:
+        raise RuntimeError(
+            "Skin weight contract failed:\n  - " + "\n  - ".join(weight_problems)
         )
     detach_skinned_mesh_roots(meshes)
     export_glb(args.clean_output, armature, meshes, animations=False)

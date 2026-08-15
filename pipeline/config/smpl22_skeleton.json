@@ -7,6 +7,16 @@
       "z_max": 0.90,
       "x_half_width": 0.18,
       "front_weighted_y_quantile": 0.40
+    },
+    "limb_landmarks": {
+      "arm_z_min": 0.68,
+      "arm_z_max": 0.82,
+      "arm_x_radius": 0.018,
+      "arm_section_low_quantile": 0.10,
+      "arm_section_high_quantile": 0.90,
+      "foot_z_max": 0.03,
+      "foot_center_exclusion": 0.04,
+      "minimum_samples": 24
     }
   },
   "joints": [
