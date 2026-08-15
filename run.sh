@@ -15,8 +15,13 @@
 #   # 从某个阶段开始（1-5），常用于断点续跑
 #   ./run.sh --stage 3
 #
+#   # 跳过某几个阶段（逗号分隔，1-5），常用于复用已有产物
+#   ./run.sh --skip 3,4
+#
 # 说明：
 #   * 每步执行前会打印提示；任一步失败立即中止整个脚本，不再继续后续阶段。
+#   * --stage 与 --skip 可组合使用：先按 --stage 截断起点，再按 --skip 跳过其中若干阶段。
+#   * 被跳过的阶段假定其产物已存在，请自行确认（如阶段③跳过后沿用已有 hmr4d_results.pt）。
 #   * 第②步含「拓扑门禁」：若产出 skeletons 为非标准 22 骨 humanoid，
 #     脚本会识别报错关键词并给出明确提示，指向 "logs/02_topology_diagnostic.json"，
 #     必须回第①步重新采样（--use-transfer），不能靠改映射救回。
@@ -36,6 +41,7 @@ GVHMR_HOME="${GVHMR_HOME:-/home/naqi/GVHMR}"
 BLENDER="${BLENDER_BIN:-/usr/local/bin/blender}"
 
 START_STAGE="${START_STAGE:-1}"
+SKIP_STAGES="${SKIP_STAGES:-}"   # 逗号分隔的阶段号，如 "3,4"
 
 # 资源/剧本路径
 VIDEO_BASE="$(basename "$VIDEO")"
@@ -58,6 +64,19 @@ DIAG_JSON="$LOG_DIR/02_topology_diagnostic.json"
 log()   { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 ok()    { printf '\033[1;32m[OK] %s\033[0m\n' "$*"; }
 fail()  { printf '\033[1;31m[FAIL] %s\033[0m\n' "$*" >&2; }
+
+# 阶段是否在 --skip 列表中
+#   should_skip <阶段号>  → 命中返回 0(true)，否则 1(false)
+should_skip() {
+    local n="$1"
+    [[ -z "$SKIP_STAGES" ]] && return 1
+    local IFS=','
+    local s
+    for s in $SKIP_STAGES; do
+        [[ "$s" == "$n" ]] && return 0
+    done
+    return 1
+}
 
 # run_step <阶段名> <命令...>
 #   执行前打印提示，失败立即中止整个脚本。
@@ -98,6 +117,7 @@ show_help() {
 
 选项：
   --stage <1-5>        从指定阶段开始运行（默认 1），用于断点续跑
+  --skip <a,b,...>     跳过指定阶段（1-5，逗号分隔，如 3,4），用于复用已有产物
   -h, --help           显示帮助
 
 所有路径均可用环境变量覆盖：PIPELINE_WORK / PIPELINE_RUN / PIPELINE_VIDEO /
@@ -106,6 +126,7 @@ EOF
 }
 
 START_STAGE_ARG=""
+SKIP_STAGES_ARG=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --stage)
@@ -114,6 +135,14 @@ while [[ $# -gt 0 ]]; do
                 exit 2
             fi
             START_STAGE_ARG="$2"
+            shift 2
+            ;;
+        --skip)
+            if [[ -z "${2:-}" ]]; then
+                echo "错误：--skip 需要一个逗号分隔的数值参数（如 3,4）" >&2
+                exit 2
+            fi
+            SKIP_STAGES_ARG="$2"
             shift 2
             ;;
         -h|--help)
@@ -136,6 +165,24 @@ if [[ -n "$START_STAGE_ARG" ]]; then
     START_STAGE="$START_STAGE_ARG"
 fi
 
+if [[ -n "$SKIP_STAGES_ARG" ]]; then
+    # 校验 --skip 中的每个阶段号都合法（1-5）
+    SKIP_STAGES_ARG="${SKIP_STAGES_ARG// /}"   # 去掉空格
+    cleaned=""
+    IFS=','
+    set -f
+    for s in $SKIP_STAGES_ARG; do
+        if ! [[ "$s" =~ ^[1-5]$ ]]; then
+            echo "错误：--skip 的值只能取 1-5，收到 '$s'" >&2
+            exit 2
+        fi
+        cleaned="${cleaned:+$cleaned,}$s"
+    done
+    set +f
+    unset IFS
+    SKIP_STAGES="$cleaned"
+fi
+
 # ---------------------------------------------------------------------------
 # 运行前检查
 # ---------------------------------------------------------------------------
@@ -145,13 +192,14 @@ echo "  RUN       = $RUN"
 echo "  VIDEO     = $VIDEO"
 echo "  CHARACTER = $CHARACTER"
 echo "  起始阶段  = $START_STAGE"
+[[ -n "$SKIP_STAGES" ]] && echo "  跳过阶段  = $SKIP_STAGES"
 
 mkdir -p "$RUN/rigging" "$RUN/motion" "$RUN/renders" "$LOG_DIR"
 
 # ---------------------------------------------------------------------------
 # 阶段 ① SkinTokens 绑骨/蒙皮
 # ---------------------------------------------------------------------------
-if [[ "$START_STAGE" -le 1 ]]; then
+if [[ "$START_STAGE" -le 1 ]] && ! should_skip 1; then
     run_step "阶段 ① SkinTokens 绑骨/蒙皮（内含拓扑门禁前采样）" \
         bash -c '
             cd "$1"
@@ -164,13 +212,13 @@ if [[ "$START_STAGE" -le 1 ]]; then
         ' _ "$SKINTOKENS_HOME" "$SKINTOKENS_HOME" "$WORK" "$CHARACTER" "$RUN"
     ok "阶段①完成：$RUN/rigging/character_rigged_raw.glb"
 else
-    log "跳过阶段①（--stage $START_STAGE）"
+    log "跳过阶段①（沿用已有产物）"
 fi
 
 # ---------------------------------------------------------------------------
 # 阶段 ② 清理/语义化（含压力测试 + 拓扑门禁）
 # ---------------------------------------------------------------------------
-if [[ "$START_STAGE" -le 2 ]]; then
+if [[ "$START_STAGE" -le 2 ]] && ! should_skip 2; then
     run_step "阶段 ② Blender 清理 + 语义化骨骼（含拓扑门禁，非标准 22 骨会中止）" \
         bash -c '
             "$1" --background \
@@ -194,13 +242,13 @@ if [[ "$START_STAGE" -le 2 ]]; then
     fi
     ok "阶段②完成：$RUN/rigging/character_rigged_clean.glb"
 else
-    log "跳过阶段②（--stage $START_STAGE）"
+    log "跳过阶段②（沿用已有产物）"
 fi
 
 # ---------------------------------------------------------------------------
 # 阶段 ③ GVHMR 动作提取
 # ---------------------------------------------------------------------------
-if [[ "$START_STAGE" -le 3 ]]; then
+if [[ "$START_STAGE" -le 3 ]] && ! should_skip 3; then
     run_step "阶段 ③ GVHMR 单目动捕（产出 hmr4d_results.pt）" \
         bash -c '
             cd "$1"
@@ -222,13 +270,13 @@ if [[ "$START_STAGE" -le 3 ]]; then
     ls -lh "$GVHMR_RESULT"
     ok "阶段③完成：$GVHMR_RESULT"
 else
-    log "跳过阶段③（--stage $START_STAGE）：沿用已有 $GVHMR_RESULT"
+    log "跳过阶段③：沿用已有 $GVHMR_RESULT"
 fi
 
 # ---------------------------------------------------------------------------
 # 阶段 ④ 动作标准化为 SMPL-22 NPZ
 # ---------------------------------------------------------------------------
-if [[ "$START_STAGE" -le 4 ]]; then
+if [[ "$START_STAGE" -le 4 ]] && ! should_skip 4; then
     run_step "阶段 ④ 动作标准化（产出 ${VIDEO_STEM}_smpl22.npz）" \
         bash -c '
             cd "$1"
@@ -242,13 +290,13 @@ if [[ "$START_STAGE" -le 4 ]]; then
         ' _ "$GVHMR_HOME" "$WORK" "$GVHMR_RESULT" "$RUN" "$VIDEO_STEM"
     ok "阶段④完成：$RUN/motion/${VIDEO_STEM}_smpl22.npz"
 else
-    log "跳过阶段④（--stage $START_STAGE）"
+    log "跳过阶段④（沿用已有产物）"
 fi
 
 # ---------------------------------------------------------------------------
 # 阶段 ⑤ 重定向/烘焙
 # ---------------------------------------------------------------------------
-if [[ "$START_STAGE" -le 5 ]]; then
+if [[ "$START_STAGE" -le 5 ]] && ! should_skip 5; then
     run_step "阶段 ⑤ Blender 重定向/烘焙（产出最终动画 GLB）" \
         bash -c '
             "$1" --background \
@@ -262,7 +310,7 @@ if [[ "$START_STAGE" -le 5 ]]; then
         ' _ "$BLENDER" "$WORK" "$RUN" "$VIDEO_STEM"
     ok "阶段⑤完成：$RUN/motion/character_${VIDEO_STEM}_animated.glb"
 else
-    log "跳过阶段⑤（--stage $START_STAGE）"
+    log "跳过阶段⑤（沿用已有产物）"
 fi
 
 # ---------------------------------------------------------------------------
