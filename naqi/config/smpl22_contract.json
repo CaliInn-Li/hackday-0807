@@ -1,0 +1,29 @@
+{
+  "description": "GVHMR SMPL-22 body contract used by the current motion exporter.",
+  "joints": [
+    {"index": 0, "name": "Pelvis"},
+    {"index": 1, "name": "L_Hip"},
+    {"index": 2, "name": "R_Hip"},
+    {"index": 3, "name": "Spine1"},
+    {"index": 4, "name": "L_Knee"},
+    {"index": 5, "name": "R_Knee"},
+    {"index": 6, "name": "Spine2"},
+    {"index": 7, "name": "L_Ankle"},
+    {"index": 8, "name": "R_Ankle"},
+    {"index": 9, "name": "Spine3"},
+    {"index": 10, "name": "L_Foot"},
+    {"index": 11, "name": "R_Foot"},
+    {"index": 12, "name": "Neck"},
+    {"index": 13, "name": "L_Collar"},
+    {"index": 14, "name": "R_Collar"},
+    {"index": 15, "name": "Head"},
+    {"index": 16, "name": "L_Shoulder"},
+    {"index": 17, "name": "R_Shoulder"},
+    {"index": 18, "name": "L_Elbow"},
+    {"index": 19, "name": "R_Elbow"},
+    {"index": 20, "name": "L_Wrist"},
+    {"index": 21, "name": "R_Wrist"}
+  ],
+  "excluded_from_smpl22": ["L_Hand", "R_Hand", "finger_joints", "props"],
+  "mapping_policy": "Infer target bones from topology first; resolve x-positive/x-negative to L/R only after a front-view orientation check."
+}

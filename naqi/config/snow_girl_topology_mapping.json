@@ -1,0 +1,31 @@
+{
+  "character": "雪帽少女_rigged.glb",
+  "mapping_method": "SkinTokens topology: root, upward spine chain, three-way upper branch, four-bone arm/leg chains",
+  "coordinate_note": "x_positive is provisionally SMPL-L and x_negative is provisionally SMPL-R; confirm with a front-view check before production.",
+  "bone_to_smpl22": {
+    "bone_0": 0,
+    "bone_38": 1,
+    "bone_42": 2,
+    "bone_1": 3,
+    "bone_39": 4,
+    "bone_43": 5,
+    "bone_2": 6,
+    "bone_40": 7,
+    "bone_44": 8,
+    "bone_3": 9,
+    "bone_41": 10,
+    "bone_45": 11,
+    "bone_4": 12,
+    "bone_6": 13,
+    "bone_22": 14,
+    "bone_5": 15,
+    "bone_7": 16,
+    "bone_23": 17,
+    "bone_8": 18,
+    "bone_24": 19,
+    "bone_9": 20,
+    "bone_25": 21
+  },
+  "extra_bones_policy": "Keep all finger descendants in the exported armature; GVHMR SMPL-22 does not key them, so they follow the wrist at rest pose.",
+  "source_topology_report": "../reports/snow_girl_rigged_topology.json"
+}

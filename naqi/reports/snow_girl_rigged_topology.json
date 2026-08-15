@@ -1,0 +1,883 @@
+{
+  "input": "/home/naqi/hackday-character-pipeline/runs/hackday_20260814/inputs/snow_girl_rigged.glb",
+  "skin_count": 1,
+  "joint_count": 46,
+  "coordinate_note": "Positions are reported in the GLB node coordinate system; left/right still needs an explicit front/orientation check.",
+  "root_candidates": [
+    "bone_0"
+  ],
+  "root_candidate": "bone_0",
+  "root_children": [
+    "bone_1",
+    "bone_38",
+    "bone_42"
+  ],
+  "upward_spine_branch": "bone_1",
+  "spine_path": [
+    "bone_0",
+    "bone_1",
+    "bone_2",
+    "bone_3"
+  ],
+  "first_upper_branch": "bone_3",
+  "neck_path": [
+    "bone_4",
+    "bone_5"
+  ],
+  "body_mapping": {
+    "Pelvis": "bone_0",
+    "Spine1": "bone_1",
+    "Spine2": "bone_2",
+    "Spine3": "bone_3",
+    "Neck": "bone_4",
+    "Head": "bone_5"
+  },
+  "arm_candidates": [
+    {
+      "side_axis": "x_positive",
+      "path": [
+        "bone_6",
+        "bone_7",
+        "bone_8",
+        "bone_9"
+      ],
+      "semantic_slots": {
+        "Collar": "bone_6",
+        "Shoulder": "bone_7",
+        "Elbow": "bone_8",
+        "Wrist": "bone_9"
+      },
+      "finger_or_extra_children": [
+        "bone_10",
+        "bone_13",
+        "bone_16",
+        "bone_19"
+      ]
+    },
+    {
+      "side_axis": "x_negative",
+      "path": [
+        "bone_22",
+        "bone_23",
+        "bone_24",
+        "bone_25"
+      ],
+      "semantic_slots": {
+        "Collar": "bone_22",
+        "Shoulder": "bone_23",
+        "Elbow": "bone_24",
+        "Wrist": "bone_25"
+      },
+      "finger_or_extra_children": [
+        "bone_26",
+        "bone_29",
+        "bone_32",
+        "bone_35"
+      ]
+    }
+  ],
+  "leg_candidates": [
+    {
+      "side_axis": "x_positive",
+      "path": [
+        "bone_38",
+        "bone_39",
+        "bone_40",
+        "bone_41"
+      ],
+      "semantic_slots": {
+        "Hip": "bone_38",
+        "Knee": "bone_39",
+        "Ankle": "bone_40",
+        "Foot": "bone_41"
+      }
+    },
+    {
+      "side_axis": "x_negative",
+      "path": [
+        "bone_42",
+        "bone_43",
+        "bone_44",
+        "bone_45"
+      ],
+      "semantic_slots": {
+        "Hip": "bone_42",
+        "Knee": "bone_43",
+        "Ankle": "bone_44",
+        "Foot": "bone_45"
+      }
+    }
+  ],
+  "joints": [
+    {
+      "joint_index": 0,
+      "node_index": 45,
+      "name": "bone_0",
+      "parent": null,
+      "children": [
+        "bone_1",
+        "bone_38",
+        "bone_42"
+      ],
+      "direct_child_count": 3,
+      "descendant_count": 45,
+      "leaf_count": 11,
+      "world_position": [
+        0.0006849,
+        -0.0226028,
+        0.0294521
+      ]
+    },
+    {
+      "joint_index": 1,
+      "node_index": 36,
+      "name": "bone_1",
+      "parent": "bone_0",
+      "children": [
+        "bone_2"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 36,
+      "leaf_count": 9,
+      "world_position": [
+        0.0006849,
+        -0.0075343,
+        0.0280822
+      ]
+    },
+    {
+      "joint_index": 2,
+      "node_index": 35,
+      "name": "bone_2",
+      "parent": "bone_1",
+      "children": [
+        "bone_3"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 35,
+      "leaf_count": 9,
+      "world_position": [
+        0.0006849,
+        0.0089041,
+        0.0267123
+      ]
+    },
+    {
+      "joint_index": 3,
+      "node_index": 34,
+      "name": "bone_3",
+      "parent": "bone_2",
+      "children": [
+        "bone_4",
+        "bone_6",
+        "bone_22"
+      ],
+      "direct_child_count": 3,
+      "descendant_count": 34,
+      "leaf_count": 9,
+      "world_position": [
+        0.0006849,
+        0.0280822,
+        0.0253425
+      ]
+    },
+    {
+      "joint_index": 4,
+      "node_index": 1,
+      "name": "bone_4",
+      "parent": "bone_3",
+      "children": [
+        "bone_5"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 1,
+      "leaf_count": 1,
+      "world_position": [
+        0.0006849,
+        0.05,
+        0.0239726
+      ]
+    },
+    {
+      "joint_index": 5,
+      "node_index": 0,
+      "name": "bone_5",
+      "parent": "bone_4",
+      "children": [],
+      "direct_child_count": 0,
+      "descendant_count": 0,
+      "leaf_count": 1,
+      "world_position": [
+        0.0006849,
+        0.0719178,
+        0.0171233
+      ]
+    },
+    {
+      "joint_index": 6,
+      "node_index": 17,
+      "name": "bone_6",
+      "parent": "bone_3",
+      "children": [
+        "bone_7"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 15,
+      "leaf_count": 4,
+      "world_position": [
+        0.0116438,
+        0.0458904,
+        0.0239726
+      ]
+    },
+    {
+      "joint_index": 7,
+      "node_index": 16,
+      "name": "bone_7",
+      "parent": "bone_6",
+      "children": [
+        "bone_8"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 14,
+      "leaf_count": 4,
+      "world_position": [
+        0.0335617,
+        0.0390411,
+        0.0239726
+      ]
+    },
+    {
+      "joint_index": 8,
+      "node_index": 15,
+      "name": "bone_8",
+      "parent": "bone_7",
+      "children": [
+        "bone_9"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 13,
+      "leaf_count": 4,
+      "world_position": [
+        0.070548,
+        0.0321918,
+        0.0226028
+      ]
+    },
+    {
+      "joint_index": 9,
+      "node_index": 14,
+      "name": "bone_9",
+      "parent": "bone_8",
+      "children": [
+        "bone_10",
+        "bone_13",
+        "bone_16",
+        "bone_19"
+      ],
+      "direct_child_count": 4,
+      "descendant_count": 12,
+      "leaf_count": 4,
+      "world_position": [
+        0.1116439,
+        0.0308219,
+        0.0226028
+      ]
+    },
+    {
+      "joint_index": 10,
+      "node_index": 4,
+      "name": "bone_10",
+      "parent": "bone_9",
+      "children": [
+        "bone_11"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 2,
+      "leaf_count": 1,
+      "world_position": [
+        0.1198631,
+        0.0267123,
+        0.0308219
+      ]
+    },
+    {
+      "joint_index": 11,
+      "node_index": 3,
+      "name": "bone_11",
+      "parent": "bone_10",
+      "children": [
+        "bone_12"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 1,
+      "leaf_count": 1,
+      "world_position": [
+        0.1267124,
+        0.0239726,
+        0.0376712
+      ]
+    },
+    {
+      "joint_index": 12,
+      "node_index": 2,
+      "name": "bone_12",
+      "parent": "bone_11",
+      "children": [],
+      "direct_child_count": 0,
+      "descendant_count": 0,
+      "leaf_count": 1,
+      "world_position": [
+        0.1321919,
+        0.0212329,
+        0.0431507
+      ]
+    },
+    {
+      "joint_index": 13,
+      "node_index": 7,
+      "name": "bone_13",
+      "parent": "bone_9",
+      "children": [
+        "bone_14"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 2,
+      "leaf_count": 1,
+      "world_position": [
+        0.1363014,
+        0.0335616,
+        0.0321918
+      ]
+    },
+    {
+      "joint_index": 14,
+      "node_index": 6,
+      "name": "bone_14",
+      "parent": "bone_13",
+      "children": [
+        "bone_15"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 1,
+      "leaf_count": 1,
+      "world_position": [
+        0.1445206,
+        0.0321918,
+        0.0321918
+      ]
+    },
+    {
+      "joint_index": 15,
+      "node_index": 5,
+      "name": "bone_15",
+      "parent": "bone_14",
+      "children": [],
+      "direct_child_count": 0,
+      "descendant_count": 0,
+      "leaf_count": 1,
+      "world_position": [
+        0.1527398,
+        0.0308219,
+        0.0321918
+      ]
+    },
+    {
+      "joint_index": 16,
+      "node_index": 10,
+      "name": "bone_16",
+      "parent": "bone_9",
+      "children": [
+        "bone_17"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 2,
+      "leaf_count": 1,
+      "world_position": [
+        0.1376713,
+        0.0335616,
+        0.0226028
+      ]
+    },
+    {
+      "joint_index": 17,
+      "node_index": 9,
+      "name": "bone_17",
+      "parent": "bone_16",
+      "children": [
+        "bone_18"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 1,
+      "leaf_count": 1,
+      "world_position": [
+        0.1458905,
+        0.0335616,
+        0.0226028
+      ]
+    },
+    {
+      "joint_index": 18,
+      "node_index": 8,
+      "name": "bone_18",
+      "parent": "bone_17",
+      "children": [],
+      "direct_child_count": 0,
+      "descendant_count": 0,
+      "leaf_count": 1,
+      "world_position": [
+        0.1541096,
+        0.0321918,
+        0.0226028
+      ]
+    },
+    {
+      "joint_index": 19,
+      "node_index": 13,
+      "name": "bone_19",
+      "parent": "bone_9",
+      "children": [
+        "bone_20"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 2,
+      "leaf_count": 1,
+      "world_position": [
+        0.1376713,
+        0.0335616,
+        0.0116438
+      ]
+    },
+    {
+      "joint_index": 20,
+      "node_index": 12,
+      "name": "bone_20",
+      "parent": "bone_19",
+      "children": [
+        "bone_21"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 1,
+      "leaf_count": 1,
+      "world_position": [
+        0.1458905,
+        0.0321918,
+        0.0116439
+      ]
+    },
+    {
+      "joint_index": 21,
+      "node_index": 11,
+      "name": "bone_21",
+      "parent": "bone_20",
+      "children": [],
+      "direct_child_count": 0,
+      "descendant_count": 0,
+      "leaf_count": 1,
+      "world_position": [
+        0.1527398,
+        0.0308219,
+        0.0116439
+      ]
+    },
+    {
+      "joint_index": 22,
+      "node_index": 33,
+      "name": "bone_22",
+      "parent": "bone_3",
+      "children": [
+        "bone_23"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 15,
+      "leaf_count": 4,
+      "world_position": [
+        -0.010274,
+        0.0458904,
+        0.0239726
+      ]
+    },
+    {
+      "joint_index": 23,
+      "node_index": 32,
+      "name": "bone_23",
+      "parent": "bone_22",
+      "children": [
+        "bone_24"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 14,
+      "leaf_count": 4,
+      "world_position": [
+        -0.0321918,
+        0.0390411,
+        0.0239726
+      ]
+    },
+    {
+      "joint_index": 24,
+      "node_index": 31,
+      "name": "bone_24",
+      "parent": "bone_23",
+      "children": [
+        "bone_25"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 13,
+      "leaf_count": 4,
+      "world_position": [
+        -0.0691781,
+        0.0321918,
+        0.0226028
+      ]
+    },
+    {
+      "joint_index": 25,
+      "node_index": 30,
+      "name": "bone_25",
+      "parent": "bone_24",
+      "children": [
+        "bone_26",
+        "bone_29",
+        "bone_32",
+        "bone_35"
+      ],
+      "direct_child_count": 4,
+      "descendant_count": 12,
+      "leaf_count": 4,
+      "world_position": [
+        -0.110274,
+        0.0308219,
+        0.0226028
+      ]
+    },
+    {
+      "joint_index": 26,
+      "node_index": 20,
+      "name": "bone_26",
+      "parent": "bone_25",
+      "children": [
+        "bone_27"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 2,
+      "leaf_count": 1,
+      "world_position": [
+        -0.1184932,
+        0.0267123,
+        0.0308219
+      ]
+    },
+    {
+      "joint_index": 27,
+      "node_index": 19,
+      "name": "bone_27",
+      "parent": "bone_26",
+      "children": [
+        "bone_28"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 1,
+      "leaf_count": 1,
+      "world_position": [
+        -0.1253425,
+        0.0239726,
+        0.0376713
+      ]
+    },
+    {
+      "joint_index": 28,
+      "node_index": 18,
+      "name": "bone_28",
+      "parent": "bone_27",
+      "children": [],
+      "direct_child_count": 0,
+      "descendant_count": 0,
+      "leaf_count": 1,
+      "world_position": [
+        -0.130822,
+        0.0212329,
+        0.0431507
+      ]
+    },
+    {
+      "joint_index": 29,
+      "node_index": 23,
+      "name": "bone_29",
+      "parent": "bone_25",
+      "children": [
+        "bone_30"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 2,
+      "leaf_count": 1,
+      "world_position": [
+        -0.1376713,
+        0.0335616,
+        0.0321918
+      ]
+    },
+    {
+      "joint_index": 30,
+      "node_index": 22,
+      "name": "bone_30",
+      "parent": "bone_29",
+      "children": [
+        "bone_31"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 1,
+      "leaf_count": 1,
+      "world_position": [
+        -0.1445206,
+        0.0321918,
+        0.0321918
+      ]
+    },
+    {
+      "joint_index": 31,
+      "node_index": 21,
+      "name": "bone_31",
+      "parent": "bone_30",
+      "children": [],
+      "direct_child_count": 0,
+      "descendant_count": 0,
+      "leaf_count": 1,
+      "world_position": [
+        -0.1527398,
+        0.0308219,
+        0.0321918
+      ]
+    },
+    {
+      "joint_index": 32,
+      "node_index": 26,
+      "name": "bone_32",
+      "parent": "bone_25",
+      "children": [
+        "bone_33"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 2,
+      "leaf_count": 1,
+      "world_position": [
+        -0.1363014,
+        0.0335617,
+        0.0226028
+      ]
+    },
+    {
+      "joint_index": 33,
+      "node_index": 25,
+      "name": "bone_33",
+      "parent": "bone_32",
+      "children": [
+        "bone_34"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 1,
+      "leaf_count": 1,
+      "world_position": [
+        -0.1458904,
+        0.0335617,
+        0.0226028
+      ]
+    },
+    {
+      "joint_index": 34,
+      "node_index": 24,
+      "name": "bone_34",
+      "parent": "bone_33",
+      "children": [],
+      "direct_child_count": 0,
+      "descendant_count": 0,
+      "leaf_count": 1,
+      "world_position": [
+        -0.1541096,
+        0.0321918,
+        0.0226028
+      ]
+    },
+    {
+      "joint_index": 35,
+      "node_index": 29,
+      "name": "bone_35",
+      "parent": "bone_25",
+      "children": [
+        "bone_36"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 2,
+      "leaf_count": 1,
+      "world_position": [
+        -0.1363014,
+        0.0335616,
+        0.0116439
+      ]
+    },
+    {
+      "joint_index": 36,
+      "node_index": 28,
+      "name": "bone_36",
+      "parent": "bone_35",
+      "children": [
+        "bone_37"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 1,
+      "leaf_count": 1,
+      "world_position": [
+        -0.1445206,
+        0.0321918,
+        0.0116438
+      ]
+    },
+    {
+      "joint_index": 37,
+      "node_index": 27,
+      "name": "bone_37",
+      "parent": "bone_36",
+      "children": [],
+      "direct_child_count": 0,
+      "descendant_count": 0,
+      "leaf_count": 1,
+      "world_position": [
+        -0.1513699,
+        0.0308219,
+        0.0116438
+      ]
+    },
+    {
+      "joint_index": 38,
+      "node_index": 40,
+      "name": "bone_38",
+      "parent": "bone_0",
+      "children": [
+        "bone_39"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 3,
+      "leaf_count": 1,
+      "world_position": [
+        0.0226028,
+        -0.0308219,
+        0.0294521
+      ]
+    },
+    {
+      "joint_index": 39,
+      "node_index": 39,
+      "name": "bone_39",
+      "parent": "bone_38",
+      "children": [
+        "bone_40"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 2,
+      "leaf_count": 1,
+      "world_position": [
+        0.0308219,
+        -0.0883562,
+        0.0294521
+      ]
+    },
+    {
+      "joint_index": 40,
+      "node_index": 38,
+      "name": "bone_40",
+      "parent": "bone_39",
+      "children": [
+        "bone_41"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 1,
+      "leaf_count": 1,
+      "world_position": [
+        0.040411,
+        -0.1472603,
+        0.0239726
+      ]
+    },
+    {
+      "joint_index": 41,
+      "node_index": 37,
+      "name": "bone_41",
+      "parent": "bone_40",
+      "children": [],
+      "direct_child_count": 0,
+      "descendant_count": 0,
+      "leaf_count": 1,
+      "world_position": [
+        0.0527397,
+        -0.1732877,
+        0.0527398
+      ]
+    },
+    {
+      "joint_index": 42,
+      "node_index": 44,
+      "name": "bone_42",
+      "parent": "bone_0",
+      "children": [
+        "bone_43"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 3,
+      "leaf_count": 1,
+      "world_position": [
+        -0.0212329,
+        -0.0308219,
+        0.0294521
+      ]
+    },
+    {
+      "joint_index": 43,
+      "node_index": 43,
+      "name": "bone_43",
+      "parent": "bone_42",
+      "children": [
+        "bone_44"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 2,
+      "leaf_count": 1,
+      "world_position": [
+        -0.0294521,
+        -0.0883562,
+        0.0294521
+      ]
+    },
+    {
+      "joint_index": 44,
+      "node_index": 42,
+      "name": "bone_44",
+      "parent": "bone_43",
+      "children": [
+        "bone_45"
+      ],
+      "direct_child_count": 1,
+      "descendant_count": 1,
+      "leaf_count": 1,
+      "world_position": [
+        -0.0390411,
+        -0.1472603,
+        0.0239726
+      ]
+    },
+    {
+      "joint_index": 45,
+      "node_index": 41,
+      "name": "bone_45",
+      "parent": "bone_44",
+      "children": [],
+      "direct_child_count": 0,
+      "descendant_count": 0,
+      "leaf_count": 1,
+      "world_position": [
+        -0.0513699,
+        -0.1732878,
+        0.0527397
+      ]
+    }
+  ]
+}

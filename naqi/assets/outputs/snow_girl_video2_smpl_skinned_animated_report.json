@@ -1,0 +1,48 @@
+{
+  "frames": 241,
+  "fps": 24,
+  "duration_seconds": 10.042,
+  "target_height": 1.740249,
+  "source_height": 1.7254683,
+  "translation_scale": 1.0085662,
+  "mapped_bones": 22,
+  "target_bone_names": [
+    "bone_0",
+    "bone_1",
+    "bone_2",
+    "bone_3",
+    "bone_4",
+    "bone_5",
+    "bone_6",
+    "bone_7",
+    "bone_8",
+    "bone_9",
+    "bone_10",
+    "bone_11",
+    "bone_12",
+    "bone_13",
+    "bone_14",
+    "bone_15",
+    "bone_16",
+    "bone_17",
+    "bone_19",
+    "bone_20",
+    "bone_21",
+    "bone_22"
+  ],
+  "preview_cycles": {
+    "backend": "CUDA",
+    "devices": [
+      "NVIDIA GeForce RTX 5090 D v2"
+    ]
+  },
+  "preview_frames": [
+    1,
+    80,
+    160
+  ],
+  "preview_camera": "follow_root",
+  "character": "/home/naqi/hackday-character-pipeline/runs/hackday_20260814/smpl_direct_test/outputs/snow_girl_smpl_skinned.glb",
+  "motion": "/home/naqi/hackday-character-pipeline/runs/hackday_20260814/motion/video2_smpl22.npz",
+  "output": "/home/naqi/hackday-character-pipeline/runs/hackday_20260814/smpl_direct_test/outputs/snow_girl_video2_smpl_skinned_animated.glb"
+}
